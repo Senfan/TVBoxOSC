@@ -100,11 +100,26 @@
         <activity
             android:name=".ui.activity.SettingActivity"
             android:screenOrientation="sensorLandscape" />
+        <activity
+            android:name=".ui.activity.UpdateActivity"
+            android:screenOrientation="sensorLandscape"
+            android:exported="false" />
+        <meta-data android:name="tvbox.update.brand" android:value="${updateBrand}" />
+        <meta-data android:name="tvbox.update.mode" android:value="${updateMode}" />
+        <meta-data android:name="tvbox.update.abi" android:value="${updateAbi}" />
             
         <service
             android:name=".server.PlayService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />    
+
+        <receiver
+            android:name=".update.UpdateCleanupReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <receiver android:name=".receiver.SearchReceiver"
             android:exported="true">

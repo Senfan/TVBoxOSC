@@ -17,6 +17,7 @@ import com.github.tvbox.osc.api.ApiConfig;
 import com.github.tvbox.osc.base.BaseActivity;
 import com.github.tvbox.osc.base.BaseLazyFragment;
 import com.github.tvbox.osc.bean.SourceBean;
+import com.github.tvbox.osc.event.RefreshEvent;
 import com.github.tvbox.osc.player.thirdparty.Kodi;
 import com.github.tvbox.osc.player.thirdparty.MXPlayer;
 import com.github.tvbox.osc.player.thirdparty.ReexPlayer;
@@ -34,6 +35,7 @@ import com.github.tvbox.osc.ui.dialog.SelectDialog;
 import com.github.tvbox.osc.ui.dialog.XWalkInitDialog;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
 import com.github.tvbox.osc.util.HawkConfig;
+import com.github.tvbox.osc.util.HawkUtils;
 import com.github.tvbox.osc.util.HistoryHelper;
 import com.github.tvbox.osc.util.OkGoHelper;
 import com.github.tvbox.osc.util.PlayerHelper;
@@ -76,6 +78,7 @@ public class ModelSettingFragment extends BaseLazyFragment {
     private TextView tvShowPreviewText;
     private TextView tvScale;
     private TextView tvPlay;
+    private TextView tvDanmuOpen;
     private TextView tvVideoPurifyText;
 
     // System Section
@@ -124,6 +127,7 @@ public class ModelSettingFragment extends BaseLazyFragment {
         tvScale.setText(PlayerHelper.getScaleName(Hawk.get(HawkConfig.PLAY_SCALE, 0)));
         tvPlay = findViewById(R.id.tvPlay);
         tvPlay.setText(PlayerHelper.getPlayerName(Hawk.get(HawkConfig.PLAY_TYPE, 0)));
+        initPlaybackPreferences();
         tvVideoPurifyText = findViewById(R.id.tvVideoPurifyText);
         tvVideoPurifyText.setText(Hawk.get(HawkConfig.VIDEO_PURIFY, true) ? "开启" : "关闭");
         // System Section
@@ -492,6 +496,7 @@ public class ModelSettingFragment extends BaseLazyFragment {
         findViewById(R.id.llMediaSetting).setOnClickListener(view -> {
             FastClickCheckUtil.check(view);
             MediaSettingDialog mediaSettingDialog = new MediaSettingDialog(view.getContext());
+            mediaSettingDialog.setOnDismissListener(dialog -> refreshPlaybackPreferences());
             mediaSettingDialog.show();
         });
 
@@ -820,9 +825,34 @@ public class ModelSettingFragment extends BaseLazyFragment {
 
     }
 
+    private void initPlaybackPreferences() {
+        tvDanmuOpen = findViewById(R.id.tvDanmuOpen);
+        refreshPlaybackPreferences();
+        findViewById(R.id.llDanmuOpen).setOnClickListener(view -> {
+            FastClickCheckUtil.check(view);
+            boolean open = !HawkUtils.getDanmuOpen();
+            HawkUtils.setDanmuOpen(open);
+            refreshPlaybackPreferences();
+            EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_DANMU_OPEN_CHANGED, open));
+        });
+    }
+
+    private void refreshPlaybackPreferences() {
+        if (tvDanmuOpen != null) {
+            tvDanmuOpen.setText(HawkUtils.getDanmuOpen() ? R.string.setting_enabled : R.string.setting_disabled);
+        }
+    }
+
+    @Override
+    protected void onFragmentResume() {
+        super.onFragmentResume();
+        refreshPlaybackPreferences();
+    }
+
     @Override
     public void onDestroyView() {
         super.onDestroyView();
+        tvDanmuOpen = null;
         SettingActivity.callback = null;
     }
 

@@ -4,6 +4,7 @@ import android.content.Context;
 import android.util.Log;
 import android.view.View;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 
@@ -61,6 +62,10 @@ public class MediaSettingDialog extends BaseDialog {
             MediaSettingEntity item = contentAdapter.getItem(i);
             MediaSettingEnum mediaSettingEnum = MediaSettingEnum.valueOf(item.tag);
             switch (mediaSettingEnum) {
+                case VodPlayerPreferred:
+                    HawkUtils.nextVodPlayerPreferred();
+                    Toast.makeText(getContext(), R.string.vod_player_preferred_tip, Toast.LENGTH_SHORT).show();
+                    break;
                 case IjkMediaCodecMode:
                     HawkUtils.nextIJKCodec();
                     break;
@@ -72,9 +77,6 @@ public class MediaSettingDialog extends BaseDialog {
                     break;
                 case ExoRendererMode:
                     HawkUtils.nextExoRendererMode();
-                    break;
-                case VodPlayerPreferred:
-                    HawkUtils.nextVodPlayerPreferred();
                     break;
             }
             contentAdapter.refreshNotifyItemChanged(i);
@@ -143,6 +145,9 @@ public class MediaSettingDialog extends BaseDialog {
             TextView tvContent = helper.getView(R.id.tv_content);
             MediaSettingEnum mediaSettingEnum = MediaSettingEnum.valueOf(item.tag);
             switch (mediaSettingEnum) {
+                case VodPlayerPreferred:
+                    tvContent.setText(HawkUtils.getVodPlayerPreferredDesc(tvContent.getContext()));
+                    break;
                 case IjkMediaCodecMode:
                     tvContent.setText(HawkUtils.getIJKCodec());
                     break;
@@ -154,9 +159,6 @@ public class MediaSettingDialog extends BaseDialog {
                     break;
                 case ExoRendererMode:
                     tvContent.setText(HawkUtils.getExoRendererModeDesc());
-                    break;
-                case VodPlayerPreferred:
-                    tvContent.setText(HawkUtils.getVodPlayerPreferredDesc());
                     break;
             }
         }
@@ -189,6 +191,6 @@ public class MediaSettingDialog extends BaseDialog {
 
     //数据枚举
     public enum MediaSettingEnum {
-        IjkMediaCodecMode, IjkCache, ExoRenderer, ExoRendererMode,VodPlayerPreferred
+        VodPlayerPreferred, IjkMediaCodecMode, IjkCache, ExoRenderer, ExoRendererMode
     }
 }

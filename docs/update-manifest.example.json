@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "artifacts": [
+    {
+      "applicationId": "com.github.tvbox.osc.tk",
+      "brand": "generic",
+      "mode": "normal",
+      "abi": "arm64-v8a",
+      "versionCode": 3,
+      "versionName": "1.1.1",
+      "minSdk": 21,
+      "apkUrl": "https://downloads.example.com/tvbox/3/TVBox-arm64-generic-java.apk",
+      "sha256": "REPLACE_WITH_THE_GENERATED_64_CHARACTER_SHA256",
+      "sizeBytes": 1,
+      "notes": "更新说明"
+    }
+  ]
+}

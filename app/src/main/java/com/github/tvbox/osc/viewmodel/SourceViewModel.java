@@ -72,6 +72,7 @@ public class SourceViewModel extends ViewModel {
     public MutableLiveData<AbsXml> quickSearchResult;
     public MutableLiveData<AbsXml> detailResult;
     public MutableLiveData<JSONObject> playResult;
+    private volatile int playRequestGeneration;
     private ExecutorService searchExecutorService;
     public Gson gson;
 
@@ -764,9 +765,22 @@ public class SourceViewModel extends ViewModel {
     //开销会不会太大了 参考 FongMi 写法优化 获取播放地址代码
     public ExecutorService threadPoolGetPlay = null;
 
-    public void getPlay(String sourceKey, String playFlag, String progressKey, String url, String subtitleKey) {
+    public void cancelPlayRequest() {
+        playRequestGeneration++;
         if (threadPoolGetPlay != null) threadPoolGetPlay.shutdownNow();
-        threadPoolGetPlay = Executors.newFixedThreadPool(2);
+    }
+
+    private void publishPlayResult(int generation, JSONObject result) {
+        App.post(() -> {
+            if (generation == playRequestGeneration) playResult.setValue(result);
+        });
+    }
+
+    public void getPlay(String sourceKey, String playFlag, String progressKey, String url, String subtitleKey) {
+        cancelPlayRequest();
+        final int generation = playRequestGeneration;
+        final ExecutorService executor = Executors.newFixedThreadPool(2);
+        threadPoolGetPlay = executor;
         Callable<JSONObject> callable = () -> {
             if (Thread.currentThread().isInterrupted()) return null;
             SourceBean sourceBean = ApiConfig.get().getSource(sourceKey);
@@ -800,14 +814,17 @@ public class SourceViewModel extends ViewModel {
             }
             return result;
         };
-        threadPoolGetPlay.execute(() -> {
-            Future<JSONObject> future = threadPoolGetPlay.submit(callable);
+        executor.execute(() -> {
+            Future<JSONObject> future = executor.submit(callable);
             try {
                 JSONObject jsonObject = future.get(15, TimeUnit.SECONDS);
-                playResult.postValue(jsonObject);
+                publishPlayResult(generation, jsonObject);
             } catch (Throwable e) {
-                e.printStackTrace();
-                playResult.postValue(null);
+                future.cancel(true);
+                if (generation == playRequestGeneration) {
+                    e.printStackTrace();
+                    publishPlayResult(generation, null);
+                }
             }
         });
     }

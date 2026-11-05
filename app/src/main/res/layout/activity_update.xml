@@ -1,0 +1,248 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="@dimen/vs_30">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/update_title"
+            android:textColor="@color/color_FFFFFF"
+            android:textSize="@dimen/ts_30"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/updateBack"
+            android:layout_width="@dimen/vs_180"
+            android:layout_height="@dimen/vs_60"
+            android:background="@drawable/button_dialog_main"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:text="@string/update_back"
+            android:textColor="@color/color_FFFFFF"
+            android:textSize="@dimen/ts_24" />
+    </LinearLayout>
+
+    <ScrollView
+        android:id="@+id/updateScroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="@dimen/vs_20"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingBottom="@dimen/vs_30">
+
+            <TextView
+                android:id="@+id/updateCurrentVersion"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/color_FFFFFF"
+                android:textSize="@dimen/ts_24" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/vs_20"
+                android:labelFor="@id/updateAddress"
+                android:text="@string/update_address"
+                android:textColor="@color/color_FFFFFF"
+                android:textSize="@dimen/ts_24" />
+
+            <EditText
+                android:id="@+id/updateAddress"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/vs_60"
+                android:background="@drawable/input_dialog_api_input"
+                android:hint="@string/update_address_hint"
+                android:imeOptions="actionDone"
+                android:inputType="textUri"
+                android:nextFocusDown="@id/updateSave"
+                android:paddingLeft="@dimen/vs_20"
+                android:paddingRight="@dimen/vs_20"
+                android:singleLine="true"
+                android:textColor="@color/color_FFFFFF"
+                android:textColorHint="@color/color_FFFFFF_50"
+                android:textSize="@dimen/ts_24" />
+
+            <TextView
+                android:id="@+id/updateAddressHelp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="@dimen/vs_10"
+                android:text="@string/update_address_help"
+                android:textColor="@color/color_FFFFFF_80"
+                android:textSize="@dimen/ts_20" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/updateSave"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/vs_60"
+                    android:layout_weight="1"
+                    android:background="@drawable/button_dialog_main"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="@string/update_save"
+                    android:textColor="@color/color_FFFFFF"
+                    android:textSize="@dimen/ts_24" />
+
+                <TextView
+                    android:id="@+id/updateClear"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/vs_60"
+                    android:layout_marginLeft="@dimen/vs_20"
+                    android:layout_weight="1"
+                    android:background="@drawable/button_dialog_main"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="@string/update_clear"
+                    android:textColor="@color/color_FFFFFF"
+                    android:textSize="@dimen/ts_24" />
+
+                <TextView
+                    android:id="@+id/updateCheck"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/vs_60"
+                    android:layout_marginLeft="@dimen/vs_20"
+                    android:layout_weight="1"
+                    android:background="@drawable/button_dialog_main"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="@string/update_check"
+                    android:textColor="@color/color_FFFFFF"
+                    android:textSize="@dimen/ts_24" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/updateStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/vs_20"
+                android:textColor="@color/color_FFFFFF"
+                android:textSize="@dimen/ts_26"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/updateDetail"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/vs_10"
+                android:textColor="@color/color_FFFFFF_80"
+                android:textSize="@dimen/ts_22" />
+
+            <TextView
+                android:id="@+id/updateNotice"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/vs_10"
+                android:textColor="@color/color_FFFFFF"
+                android:textSize="@dimen/ts_22"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/updateArtifact"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/vs_20"
+                android:textColor="@color/color_FFFFFF"
+                android:textSize="@dimen/ts_24"
+                android:visibility="gone" />
+
+            <ScrollView
+                android:id="@+id/updateNotesScroll"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/vs_180"
+                android:layout_marginTop="@dimen/vs_10"
+                android:background="@drawable/button_dialog_main"
+                android:descendantFocusability="blocksDescendants"
+                android:focusable="true"
+                android:padding="@dimen/vs_20"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/updateNotes"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:lineSpacingExtra="@dimen/vs_8"
+                    android:textColor="@color/color_FFFFFF"
+                    android:textSize="@dimen/ts_22" />
+            </ScrollView>
+
+            <ProgressBar
+                android:id="@+id/updateProgress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/vs_20"
+                android:layout_marginTop="@dimen/vs_20"
+                android:max="1000"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/updateProgressText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/vs_10"
+                android:textColor="@color/color_FFFFFF"
+                android:textSize="@dimen/ts_22"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/vs_20"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/updateAction"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/vs_60"
+                    android:layout_weight="1"
+                    android:background="@drawable/button_dialog_main"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="@string/update_download"
+                    android:textColor="@color/color_FFFFFF"
+                    android:textSize="@dimen/ts_24"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/updateCancel"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/vs_60"
+                    android:layout_marginLeft="@dimen/vs_20"
+                    android:layout_weight="1"
+                    android:background="@drawable/button_dialog_main"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="@string/update_cancel_operation"
+                    android:textColor="@color/color_FFFFFF"
+                    android:textSize="@dimen/ts_24"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

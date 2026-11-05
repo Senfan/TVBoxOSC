@@ -58,6 +58,7 @@ import com.github.tvbox.osc.ui.tv.widget.DefaultTransformer;
 import com.github.tvbox.osc.ui.tv.widget.FixedSpeedScroller;
 import com.github.tvbox.osc.ui.tv.widget.NoScrollViewPager;
 import com.github.tvbox.osc.ui.tv.widget.ViewObj;
+import com.github.tvbox.osc.update.UpdateCleanup;
 import com.github.tvbox.osc.util.AppManager;
 import com.github.tvbox.osc.util.DefaultConfig;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
@@ -260,10 +261,9 @@ public class HomeActivity extends BaseActivity {
             @Override
             public void onClick(View v) {
                 FastClickCheckUtil.check(v);
-                File dir = getCacheDir();
-                FileUtils.recursiveDelete(dir);
-                dir = getExternalCacheDir();
-                FileUtils.recursiveDelete(dir);
+                FileUtils.clearCacheExceptUpdates(getCacheDir());
+                FileUtils.clearCacheExceptUpdates(getExternalCacheDir());
+                UpdateCleanup.request(HomeActivity.this);
                 Toast.makeText(HomeActivity.this, getString(R.string.hm_cache_del), Toast.LENGTH_SHORT).show();
                 if(dataInitOk && jarInitOk){
                     String cspCachePath = FileUtils.getFilePath()+"/csp/";
@@ -403,7 +403,7 @@ public class HomeActivity extends BaseActivity {
                 SourceBean home = ApiConfig.get().getHomeSourceBean();
                 if (HomeShow) {
                     if (home != null && home.getName() != null && !home.getName().isEmpty()) tvName.setText(home.getName());
-                        tvName.clearAnimation();
+                    tvName.clearAnimation();
                 }
             }
         });

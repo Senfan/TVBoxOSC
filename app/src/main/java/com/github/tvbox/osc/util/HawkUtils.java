@@ -24,7 +24,7 @@ public class HawkUtils {
     private static final String DANMU_COLOR = "danmu_color";
 
     public static boolean getDanmuOpen() {
-        return Hawk.get(DANMU_OPEN, true);
+        return Hawk.get(DANMU_OPEN, false);
     }
 
     public static void setDanmuOpen(boolean danmuOpen) {
@@ -196,7 +196,7 @@ public class HawkUtils {
 
     // Vod 播放器首选
     public static int getVodPlayerPreferred() {
-        return Hawk.get(HawkConfig.VOD_PLAYER_PREFERRED, 0);
+        return Hawk.get(HawkConfig.VOD_PLAYER_PREFERRED, 1);
     }
 
     public static void nextVodPlayerPreferred() {
@@ -213,9 +213,8 @@ public class HawkUtils {
         return i == 0;
     }
 
-    public static String getVodPlayerPreferredDesc() {
-        App app = App.getInstance();
-        String[] array = app.getResources().getStringArray(R.array.media_content_General_VodPlayerPreferred);
+    public static String getVodPlayerPreferredDesc(Context context) {
+        String[] array = context.getResources().getStringArray(R.array.media_content_General_VodPlayerPreferred);
         return array[getVodPlayerPreferred()];
     }
 

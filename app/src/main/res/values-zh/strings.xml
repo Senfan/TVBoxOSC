@@ -60,6 +60,21 @@
     <string name="mn_wall_load">壁纸更换中</string>
     <string name="mn_wall_reset">重置壁纸</string>
     <string name="mn_play_type">播放器</string>
+    <string name="mn_vod_player_preferred">播放器优先级</string>
+    <string name="mn_danmu">弹幕</string>
+    <string name="setting_enabled">开启</string>
+    <string name="setting_disabled">关闭</string>
+    <string name="msg_player_fallback">正在临时尝试 %1$s，不保存播放器选择</string>
+    <string name="player_external_launched">已打开 %1$s</string>
+    <string name="player_external_opened">已临时打开 %1$s，未保存播放器选择</string>
+    <string name="player_external_confirm">%1$s 是否播放成功？确认结果不会保存播放器选择</string>
+    <string name="player_external_success">播放成功，仅本次使用</string>
+    <string name="player_external_failure">播放失败，尝试下一个播放器</string>
+    <string name="player_external_cancel">取消自动尝试</string>
+    <string name="player_external_failed">无法打开外部播放器</string>
+    <string name="player_fallback_cancelled">已取消自动尝试播放器</string>
+    <string name="player_temporary_label">%1$s（临时）</string>
+    <string name="vod_player_preferred_tip">影片已有设置优先，首选策略仅影响无影片设置时的默认。</string>
     <string name="mn_play_decode">IJK解码</string>
     <string name="mn_search">搜索展示</string>
     <string name="mn_ratio">画面缩放</string>
@@ -126,6 +141,17 @@
     <string name="act_live_play_empty_live_url">直播地址未配置，请前往设置界面配置哦</string>
     <string name="act_live_play_empty_channel">频道列表为空</string>
     <string name="act_live_play_network_error">直播地址网络请求失败</string>
+    <string name="live_player_group">频道播放器</string>
+    <string name="live_player_follow_default">当前频道跟随默认</string>
+    <string name="live_player_set_default">设为直播默认（默认：%1$s）</string>
+    <string name="live_player_reset_all">重置全部频道播放器</string>
+    <string name="live_player_source_default">直播源／应用默认</string>
+    <string name="live_player_default_saved">直播默认已设为 %1$s，已有频道独立选择保持不变</string>
+    <string name="live_player_follow_done">当前频道已跟随直播默认</string>
+    <string name="live_player_reset_confirm">清除所有频道的独立播放器选择，全部跟随直播默认【%1$s】？画面比例、收藏和点播设置不变。</string>
+    <string name="live_player_confirm">确定</string>
+    <string name="live_player_reset_done">所有频道已重新跟随直播默认</string>
+    <string name="live_player_save_failed">保存失败，请选择支持的直播播放器后重试</string>
     <string name="act_search">搜索</string>
     <string name="act_search_clr">清空</string>
     <string name="act_search_del">删除</string>
@@ -197,10 +223,10 @@
         <item>EXO</item>
         <item>IJK</item>
     </string-array>
-
-    <string-array name="media_content_General" >
-        <item>点播播放器首选</item>
+    <string-array name="media_content_General">
+        <item>@string/mn_vod_player_preferred</item>
     </string-array>
+
     <string-array name="media_content_IjkPlayer">
         <item>解码模式</item>
         <item>缓存</item>
@@ -223,7 +249,65 @@
     </string-array>
 
     <string-array name="media_content_General_VodPlayerPreferred">
-        <item>首选配置地址</item>
-        <item>首选设置配置</item>
+        <item>优先数据源</item>
+        <item>优先全局设置</item>
     </string-array>
+    <!-- 应用更新地址与影视源配置相互独立。 -->
+    <string name="update_title">应用更新</string>
+    <string name="update_back">返回</string>
+    <string name="update_current_version">当前版本：%1$s（%2$d）</string>
+    <string name="update_version_unknown">无法读取当前版本</string>
+    <string name="update_entry_unavailable">此版本暂时无法打开应用更新页。</string>
+    <string name="update_address">应用更新地址</string>
+    <string name="update_address_hint">请输入可信来源的 HTTPS 更新描述地址</string>
+    <string name="update_address_help">与影视源地址独立。保存不会联网，仅在手动检查时访问。</string>
+    <string name="update_save_first">地址已修改，请先保存，再检查更新。</string>
+    <string name="update_save">保存地址</string>
+    <string name="update_clear">清空地址</string>
+    <string name="update_check">检查更新</string>
+    <string name="update_cancel">取消</string>
+    <string name="update_cancel_operation">取消操作</string>
+    <string name="update_clear_confirm">仅清空应用更新地址？影视源、播放设置和其他应用数据均不会改变。</string>
+    <string name="update_address_saved">地址已保存。需要时请手动点击检查更新。</string>
+    <string name="update_address_cleared">已清空应用更新地址，不会自动检查。</string>
+    <string name="update_address_invalid">应用更新地址无效，请输入可信来源的 HTTPS 地址。</string>
+    <string name="update_unconfigured">尚未配置更新地址。保存地址后可手动检查更新。</string>
+    <string name="update_idle">等待手动检查更新</string>
+    <string name="update_checking">正在检查更新</string>
+    <string name="update_current">当前已是最新版本</string>
+    <string name="update_available">发现可用更新</string>
+    <string name="update_downloading">正在下载更新</string>
+    <string name="update_validating">正在校验安装包</string>
+    <string name="update_ready">安装包已校验。点击安装将重新校验并打开系统确认。</string>
+    <string name="update_handoff">已打开系统安装页，尚未确认安装成功。</string>
+    <string name="update_updated">已根据实际安装版本确认更新完成</string>
+    <string name="update_cancelled">更新操作已取消</string>
+    <string name="update_error">更新失败，可重新检查。</string>
+    <string name="update_new_version">更新版本：%1$s（%2$d）\n安装包大小：%3$s</string>
+    <string name="update_notes">更新说明\n%1$s</string>
+    <string name="update_no_notes">未提供更新说明。</string>
+    <string name="update_size_unknown">大小未知</string>
+    <string name="update_progress">已下载 %1$s / %2$s</string>
+    <string name="update_progress_unknown">已下载 %1$s（总大小未知）</string>
+    <string name="update_download">下载更新</string>
+    <string name="update_install">安装</string>
+    <string name="update_download_confirm">下载 %1$s（%2$d）版本？\n安装包大小：%3$s\n更新地址：%4$s\n\n请确认更新来源可信。下载完成不会自动安装。</string>
+    <string name="update_operation_cancelled">已请求取消，操作停止后可重新检查更新。</string>
+    <string name="update_artifact_missing">更新信息不完整，请重新检查更新。</string>
+    <string name="update_apk_missing">已校验的安装包不可用，请重新检查更新。</string>
+    <string name="update_permission_needed">需要允许此应用安装未知来源应用，尚未打开安装页。</string>
+    <string name="update_permission_confirm">打开系统设置，允许此应用安装未知来源应用？请仅安装可信来源的安装包。返回后不会自动安装，授权后仍需再次点击安装。</string>
+    <string name="update_open_settings">打开设置</string>
+    <string name="update_permission_waiting">等待安装来源授权。返回后不会自动安装。</string>
+    <string name="update_permission_revalidating">已允许安装来源，正在重新校验安装包，不会自动安装。</string>
+    <string name="update_permission_ready">已允许安装来源且安装包校验通过，请再次点击安装以打开系统确认。</string>
+    <string name="update_permission_denied">未允许安装来源或已取消授权，未进行安装。可重新检查更新后再尝试安装。</string>
+    <string name="update_permission_settings_missing">系统没有可用的安装来源授权页面，未进行安装。</string>
+    <string name="update_permission_failed">无法访问安装来源授权，未进行安装。</string>
+    <string name="update_installer_missing">没有可处理此安装包的系统安装器，未进行安装。</string>
+    <string name="update_install_failed">无法将安装包交给系统安装器，未进行安装。</string>
+    <string name="update_install_handoff">安装包已交给系统安装器，请在系统页面确认。这不代表安装成功。</string>
+    <string name="update_install_returned">已从系统安装页返回，更新是否成功以实际安装版本检查为准。</string>
+    <string name="update_install_cancelled">系统安装已取消或未完成，正在检查实际安装版本。</string>
+    <string name="update_install_return_failed">系统安装报告失败，正在检查实际安装版本。</string>
 </resources>

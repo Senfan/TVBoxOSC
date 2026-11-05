@@ -321,7 +321,13 @@ public class FileUtils {
     public static void cleanPlayerCache() {
         recursiveDelete(new File(getCachePath() + File.separator + "thunder"));
         recursiveDelete(new File(getExternalCachePath() + File.separator + "ijkcaches"));
-        recursiveDelete(new File(getExternalCachePath() + File.separator + "jpali" + File.separator + "Downloads"));
+        File jpali = new File(getExternalCachePath(), "jpali");
+        recursiveDelete(new File(jpali, "Downloads"));
+        CacheCleanup.removeEmptyDirectory(jpali);
+    }
+
+    public static void clearCacheExceptUpdates(File directory) {
+        CacheCleanup.clearExceptUpdates(directory);
     }
 
     public static String getFileName(String filePath) {

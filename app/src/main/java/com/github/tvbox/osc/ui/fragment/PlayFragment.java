@@ -56,11 +56,13 @@ import com.github.tvbox.osc.event.RefreshEvent;
 import com.github.tvbox.osc.player.EXOmPlayer;
 import com.github.tvbox.osc.player.IjkmPlayer;
 import com.github.tvbox.osc.player.MyVideoView;
+import com.github.tvbox.osc.player.PlaybackRetryPolicy;
+import com.github.tvbox.osc.player.PlaybackFallbackController;
 import xyz.doikki.videoplayer.player.AndroidMediaPlayer;
 import com.github.tvbox.osc.player.TrackInfo;
 import com.github.tvbox.osc.player.TrackInfoBean;
 import com.github.tvbox.osc.player.controller.VodController;
-import com.github.tvbox.osc.player.danmu.Parser;
+import com.github.tvbox.osc.player.danmu.DanmuController;
 import com.github.tvbox.osc.player.thirdparty.Kodi;
 import com.github.tvbox.osc.player.thirdparty.MXPlayer;
 import com.github.tvbox.osc.player.thirdparty.ReexPlayer;
@@ -126,9 +128,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import master.flame.danmaku.danmaku.model.BaseDanmaku;
-import master.flame.danmaku.danmaku.model.IDisplayer;
-import master.flame.danmaku.danmaku.model.android.DanmakuContext;
 import master.flame.danmaku.ui.widget.DanmakuView;
 import me.jessyan.autosize.AutoSize;
 import tv.danmaku.ijk.media.player.IMediaPlayer;
@@ -145,10 +144,13 @@ public class PlayFragment extends BaseLazyFragment {
     private SourceViewModel sourceViewModel;
     private Handler mHandler;
 
-    ExecutorService executorService;
     private DanmakuView mDanmuView;
-    private DanmakuContext mDanmakuContext;
-    private String danmuText;
+    private DanmuController danmuController;
+    private final PlaybackRetryPolicy retryPolicy = new PlaybackRetryPolicy();
+    private String retryContentKey;
+    private HashMap<String, String> videoHeaders;
+    private PlaybackFallbackController fallbackController;
+    private long retryResumePosition = -1;
 
     private String videoURL;
     private long videoDuration = -1;
@@ -164,56 +166,65 @@ public class PlayFragment extends BaseLazyFragment {
         if (event.type == RefreshEvent.TYPE_SUBTITLE_SIZE_CHANGE) {
             mController.mSubtitleView.setTextSize((int) event.obj);
         }
-        if (event.type == RefreshEvent.TYPE_SET_DANMU_SETTINGS) {
+        if (event.type == RefreshEvent.TYPE_SET_DANMU_SETTINGS && event.obj instanceof Boolean) {
             setDanmuViewSettings((Boolean) event.obj);
+        } else if (event.type == RefreshEvent.TYPE_DANMU_OPEN_CHANGED) {
+            setDanmuViewSettings(true);
         }
     }
 
     @Override
     protected void init() {
         initView();
+        initDanmuView();
         initViewModel();
         initData();
-        initDanmuView();
     }
     private void initDanmuView() {
-        mDanmuView  = findViewById(R.id.danmaku);
-        mDanmakuContext = DanmakuContext.create();
-        mVideoView.setDanmuView(mDanmuView);
+        mDanmuView = findViewById(R.id.danmaku);
+        danmuController = new DanmuController(mVideoView, mDanmuView,
+                () -> mActivity != null && (Build.VERSION.SDK_INT < Build.VERSION_CODES.N
+                        || !mActivity.isInPictureInPictureMode()));
     }
 
     private void setDanmuViewSettings(boolean reload) {
-        float speed = HawkUtils.getDanmuSpeed();
-        float alpha = HawkUtils.getDanmuAlpha();
-        float sizeScale = HawkUtils.getDanmuSizeScale();
-        int maxLine = HawkUtils.getDanmuMaxLine();
-        HashMap<Integer, Integer> maxLines = new HashMap<>();
-        maxLines.put(BaseDanmaku.TYPE_FIX_TOP, maxLine);
-        maxLines.put(BaseDanmaku.TYPE_SCROLL_RL, maxLine);
-        maxLines.put(BaseDanmaku.TYPE_SCROLL_LR, maxLine);
-        maxLines.put(BaseDanmaku.TYPE_FIX_BOTTOM, maxLine);
-        mDanmakuContext.setMaximumLines(maxLines).setScrollSpeedFactor(speed).setDanmakuTransparency(alpha).setScaleTextSize(sizeScale);
-        mDanmakuContext.setDanmakuStyle(IDisplayer.DANMAKU_STYLE_STROKEN, 3).setDanmakuMargin(8);
-        if (reload){
-            if (executorService != null){
-                executorService.shutdownNow();
-                executorService = null;
-            }
-            executorService = Executors.newSingleThreadExecutor();
-            executorService.execute(() -> {
-                mDanmuView.release();
-                mDanmuView.prepare(new Parser(danmuText), mDanmakuContext);
-                App.post(()->{
-                    if(mVideoView!=null && mVideoView.isPlaying()){
-                        mDanmuView.seekTo(mVideoView.getCurrentPosition());
-                    }
-                });
-            });
-        }
+        if (danmuController != null) danmuController.refresh(reload);
     }
 
     public VodController getVodController() {
         return mController;
+    }
+
+    private void initFallbackController() {
+        fallbackController = new PlaybackFallbackController(mVideoView, new PlaybackFallbackController.Host() {
+            @Override
+            public boolean isCurrent(String contentKey, String url) {
+                return isAdded() && mVideoView != null && mVodInfo != null
+                        && TextUtils.equals(retryContentKey, contentKey) && TextUtils.equals(videoURL, url);
+            }
+
+            @Override
+            public void onSuccess(int playerType) {
+                retryPolicy.markSuccess(playerType);
+            }
+
+            @Override
+            public void onFailure() {
+                errorWithRetry("视频播放出错", false, PlaybackRetryPolicy.ErrorType.PLAYER);
+            }
+
+            @Override
+            public void onCancelled() {
+                setTip(getString(R.string.player_fallback_cancelled), false, false);
+            }
+        });
+    }
+
+    private void resetPlaybackRetry() {
+        retryPolicy.reset();
+        retryResumePosition = -1;
+        if (fallbackController != null) fallbackController.cancelAttempt(true);
+        if (sourceViewModel != null) sourceViewModel.cancelPlayRequest();
     }
 
     private void initView() {
@@ -223,7 +234,7 @@ public class PlayFragment extends BaseLazyFragment {
             public boolean handleMessage(@NonNull Message msg) {
                 if (msg.what == 100) {
                     stopParse();
-                    errorWithRetry("嗅探错误", false);
+                    errorWithRetry("嗅探错误", false, PlaybackRetryPolicy.ErrorType.SNIFF);
                 } else if (msg.what == 200) {
                     if (mHandler.hasMessages(100)) {
                         setTip("加载完成，嗅探视频中", true, false);
@@ -258,6 +269,11 @@ public class PlayFragment extends BaseLazyFragment {
                     e.printStackTrace();
                 }
                 long skip = st * 1000L;
+                if (retryResumePosition >= 0) {
+                    long resume = retryResumePosition;
+                    retryResumePosition = -1;
+                    return Math.max(skip, resume);
+                }
                 if (CacheManager.getCache(MD5.string2MD5(url)) == null) {
                     return skip;
                 }
@@ -310,7 +326,7 @@ public class PlayFragment extends BaseLazyFragment {
 
             @Override
             public void changeParse(ParseBean pb) {
-                autoRetryCount = 0;
+                resetPlaybackRetry();
                 doParse(pb);
             }
 
@@ -322,13 +338,20 @@ public class PlayFragment extends BaseLazyFragment {
 
             @Override
             public void replay(boolean replay) {
-                autoRetryCount = 0;
+                resetPlaybackRetry();
                 play(replay);
             }
 
             @Override
             public void errReplay() {
-                errorWithRetry("视频播放出错", false);
+                AbstractPlayer failedPlayer = mVideoView.getMediaPlayer();
+                long token = fallbackController.getGeneration();
+                mHandler.post(() -> {
+                    if (mVideoView != null && mVideoView.getMediaPlayer() == failedPlayer
+                            && token == fallbackController.getGeneration()) {
+                        errorWithRetry("视频播放出错", false, PlaybackRetryPolicy.ErrorType.PLAYER);
+                    }
+                });
             }
 
             @Override
@@ -357,6 +380,8 @@ public class PlayFragment extends BaseLazyFragment {
 
         });
         mVideoView.setVideoController(mController);
+        initFallbackController();
+        fallbackController.setForeground(isResumed() && !isHidden());
         mVideoView.setmHandler(mHandler);
     }
 
@@ -640,8 +665,8 @@ public class PlayFragment extends BaseLazyFragment {
         mPlayLoadErr.setVisibility(View.GONE);
     }
 
-    void errorWithRetry(String err, boolean finish) {
-        if (!autoRetry()) {
+    void errorWithRetry(String err, boolean finish, PlaybackRetryPolicy.ErrorType errorType) {
+        if (!autoRetry(errorType)) {
             if (!isAdded()) return;
             requireActivity().runOnUiThread(new Runnable() {
                 @Override
@@ -799,67 +824,61 @@ public class PlayFragment extends BaseLazyFragment {
 
     void startPlayUrl(String url, HashMap<String, String> headers) {
         if (!isAdded()) return;
-        final String finalUrl = url;
-        requireActivity().runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                stopParse();
-                if (mVideoView != null) {
-                    mVideoView.release();
-                    if (finalUrl != null) {
-                        String url = finalUrl;
-                        videoURL = url;                        
-                        try {
-                            int playerType = mVodPlayerCfg.getInt("pl");
-                            // takagen99: Check for External Player
-                            extPlay = false;
-                            if (playerType >= 10) {
-                                VodInfo.VodSeries vs = mVodInfo.seriesMap.get(mVodInfo.playFlag).get(mVodInfo.playIndex);
-                                String playTitle = mVodInfo.name + " : " + vs.name;
-                                setTip("调用外部播放器" + PlayerHelper.getPlayerName(playerType) + "进行播放", true, false);
-                                boolean callResult = false;
-                                switch (playerType) {
-                                    case 10: {
-                                        extPlay = true;
-                                        callResult = MXPlayer.run(requireActivity(), url, playTitle, playSubtitle, headers);
-                                        break;
-                                    }
-                                    case 11: {
-                                        extPlay = true;
-                                        callResult = ReexPlayer.run(requireActivity(), url, playTitle, playSubtitle, headers);
-                                        break;
-                                    }
-                                    case 12: {
-                                        extPlay = true;
-                                        callResult = Kodi.run(requireActivity(), url, playTitle, playSubtitle, headers);
-                                        break;
-                                    }
-                                }
-                                setTip("调用外部播放器" + PlayerHelper.getPlayerName(playerType) + (callResult ? "成功" : "失败"), callResult, !callResult);
-                                return;
-                            }
-                        } catch (JSONException e) {
-                            e.printStackTrace();
-                        }
-                        hideTip();
-                        if (url.startsWith("data:application/dash+xml;base64,")) {
-                            PlayerHelper.updateCfg(mVideoView, mVodPlayerCfg, 2);
-                            App.getInstance().setDashData(url.split("base64,")[1]);
-                            url = ControlManager.get().getAddress(true) + "dash/proxy.mpd";
-                        } else if (url.contains(".mpd") || url.contains("type=mpd")) {
-                            PlayerHelper.updateCfg(mVideoView, mVodPlayerCfg, 2);
-                        } else {
-                            PlayerHelper.updateCfg(mVideoView, mVodPlayerCfg);
-                        }
-                        mVideoView.setProgressKey(progressKey);
-                        if (headers != null) {
-                            mVideoView.setUrl(url, headers);
-                        } else {
-                            mVideoView.setUrl(url);
-                        }
-                        mVideoView.start();
-                        mController.resetSpeed();
-                    }
+        final String contentKey = retryContentKey;
+        final long generation = fallbackController.getGeneration();
+        requireActivity().runOnUiThread(() -> {
+            if (!isAdded() || mVideoView == null || TextUtils.isEmpty(url)
+                    || !TextUtils.equals(contentKey, retryContentKey)
+                    || generation != fallbackController.getGeneration()) return;
+            stopParse();
+            fallbackController.cancelAttempt(false);
+            mVideoView.release();
+            videoURL = url;
+            videoHeaders = headers == null ? null : new HashMap<>(headers);
+            int savedPlayer = mVodPlayerCfg.optInt("pl", 1);
+            int preferred = retryPolicy.getTemporaryPlayerType() >= 0
+                    ? retryPolicy.getTemporaryPlayerType() : savedPlayer;
+            boolean forceExo = PlaybackRetryPolicy.requiresExo(url) && preferred < 10;
+            int playerType = retryPolicy.selectPlayer(url, preferred, forceExo, PlayerHelper.getAvailablePlayers());
+            if (playerType < 0 || !retryPolicy.beginAttempt(url, playerType)) {
+                errorWithRetry("播放器已全部尝试", false, PlaybackRetryPolicy.ErrorType.PLAYER);
+                return;
+            }
+            boolean pending = playerType != savedPlayer && !forceExo;
+            long token = fallbackController.beginAttempt(contentKey, url, playerType, pending);
+            mController.setEffectivePlayerType(playerType);
+            extPlay = playerType >= 10;
+            if (extPlay) {
+                VodInfo.VodSeries vs = mVodInfo.seriesMap.get(mVodInfo.playFlag).get(mVodInfo.getplayIndex());
+                String title = mVodInfo.name + " : " + vs.name;
+                if (PlayerHelper.launchExternal(requireActivity(), playerType, url, title, playSubtitle, videoHeaders)) {
+                    fallbackController.externalOpened();
+                    setTip(getString(pending ? R.string.player_external_opened : R.string.player_external_launched,
+                            PlayerHelper.getPlayerName(playerType)), false, false);
+                } else {
+                    extPlay = false;
+                    errorWithRetry(getString(R.string.player_external_failed), false, PlaybackRetryPolicy.ErrorType.PLAYER);
+                }
+                return;
+            }
+            hideTip();
+            PlayerHelper.updateCfg(mVideoView, mVodPlayerCfg, playerType);
+            String playbackUrl = url;
+            if (url.startsWith("data:application/dash+xml;base64,")) {
+                App.getInstance().setDashData(url.split("base64,", 2)[1]);
+                playbackUrl = ControlManager.get().getAddress(true) + "dash/proxy.mpd";
+            }
+            mVideoView.setProgressKey(progressKey);
+            if (videoHeaders != null) mVideoView.setUrl(playbackUrl, videoHeaders);
+            else mVideoView.setUrl(playbackUrl);
+            try {
+                mVideoView.start();
+                fallbackController.observeInternal();
+                setDanmuViewSettings(true);
+                mController.resetSpeed();
+            } catch (RuntimeException e) {
+                if (token == fallbackController.getGeneration()) {
+                    errorWithRetry("视频播放出错", false, PlaybackRetryPolicy.ErrorType.PLAYER);
                 }
             }
         });
@@ -1032,25 +1051,17 @@ public class PlayFragment extends BaseLazyFragment {
                     }
                     checkDanmu(danmaku);
                 } catch (Throwable th) {
-                    errorWithRetry("获取播放信息错误", true);
+                    errorWithRetry("获取播放信息错误", true, PlaybackRetryPolicy.ErrorType.PLAY_INFO);
                 }
             } else {
-                errorWithRetry("获取播放信息错误", true);
+                errorWithRetry("获取播放信息错误", true, PlaybackRetryPolicy.ErrorType.PLAY_INFO);
             }
         }        
     };
 
     private void checkDanmu(String danmu) {
-        danmuText = danmu;
-        mDanmuView.release();
-        mDanmuView.setVisibility(TextUtils.isEmpty(danmuText) || !HawkUtils.getDanmuOpen() ? View.GONE : View.VISIBLE);
-        if (TextUtils.isEmpty(danmuText)
-                || !HawkUtils.getDanmuOpen()
-                || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && mActivity.isInPictureInPictureMode())) return;
-        if (!danmuText.isEmpty()) {
-            mController.setHasDanmu(true);
-            setDanmuViewSettings(true);
-        }
+        mController.setHasDanmu(!TextUtils.isEmpty(danmu));
+        if (danmuController != null) danmuController.setContent(danmu);
     }
 
     public void setData(Bundle bundle) {
@@ -1065,6 +1076,8 @@ public class PlayFragment extends BaseLazyFragment {
     }
 
     void initPlayerCfg() {
+        resetPlaybackRetry();
+        retryContentKey = null;
         try {
             mVodPlayerCfg = new JSONObject(mVodInfo.playerCfg);
         } catch (Throwable th) {
@@ -1074,7 +1087,7 @@ public class PlayFragment extends BaseLazyFragment {
             if (!mVodPlayerCfg.has("pl")) {
                 int playType = Hawk.get(HawkConfig.PLAY_TYPE, 1);
                 boolean configurationFile = HawkUtils.getVodPlayerPreferredConfigurationFile();
-                int playerType = sourceBean.getPlayerType();
+                int playerType = sourceBean == null ? -1 : sourceBean.getPlayerType();
                 if (configurationFile && playerType != -1) {
                     playType = playerType;
                 }
@@ -1127,30 +1140,48 @@ public class PlayFragment extends BaseLazyFragment {
     @Override
     public void onPause() {
         super.onPause();
+        if (fallbackController != null) fallbackController.setForeground(false);
         if (mVideoView != null) {
             getVodController().mProgressTop.setAlpha(0);
-            mVideoView.pause();
+            mVideoView.pauseForLifecycle();
         }
     }
 
     @Override
     public void onResume() {
         super.onResume();
+        if (fallbackController != null) {
+            fallbackController.setForeground(!isHidden());
+            fallbackController.showExternalConfirmation(getActivity(), !isHidden()
+                    && (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || !requireActivity().isInPictureInPictureMode()));
+        }
         if (mVideoView != null) {
             getVodController().mProgressTop.setAlpha(1);
-            mVideoView.resume();
+            setDanmuViewSettings(false);
+            mVideoView.resumeAfterLifecycle();
         }
     }
 
     @Override
+    public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode);
+        setDanmuViewSettings(false);
+    }
+
+    @Override
     public void onHiddenChanged(boolean hidden) {
+        if (fallbackController != null) {
+            fallbackController.setForeground(!hidden && isResumed());
+            fallbackController.showExternalConfirmation(getActivity(), !hidden && isResumed()
+                    && (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || !requireActivity().isInPictureInPictureMode()));
+        }
         if (hidden) {
             if (mVideoView != null) {
-                mVideoView.pause();
+                mVideoView.pauseForLifecycle();
             }
         } else {
             if (mVideoView != null) {
-                mVideoView.resume();
+                mVideoView.resumeAfterLifecycle();
             }
         }
         super.onHiddenChanged(hidden);
@@ -1159,9 +1190,11 @@ public class PlayFragment extends BaseLazyFragment {
     @Override
     public void onDestroyView() {
         super.onDestroyView();
-        if(executorService!=null){
-            executorService.shutdownNow();
-            executorService = null;
+        if (fallbackController != null) fallbackController.release();
+        if (sourceViewModel != null) sourceViewModel.cancelPlayRequest();
+        if (danmuController != null) {
+            danmuController.release();
+            danmuController = null;
         }
         //手动注销
         sourceViewModel.playResult.removeObserver(mObserverPlayResult);
@@ -1236,33 +1269,31 @@ public class PlayFragment extends BaseLazyFragment {
         play(false);
     }
 
-    private int autoRetryCount = 0;
-
-    boolean autoRetry() {
-        switchPlayer();
-        if (loadFoundVideoUrls != null && loadFoundVideoUrls.size() > 0) {
-            autoRetryFromLoadFoundVideoUrls();
-            return true;
-        }
-        if (autoRetryCount < 1) {
-            autoRetryCount++;
-            play(false);
-            return true;
-        } else {
-            autoRetryCount = 0;
-            return false;
-        }
-    }
-
-    void switchPlayer() {
-        try {
-            int playerType = mVodPlayerCfg.getInt("pl") == 1 ? 2 : 1;
-            mVodPlayerCfg.put("pl", playerType);
-            mController.setPlayerConfig(mVodPlayerCfg);
-            mVodInfo.playerCfg = mVodPlayerCfg.toString();
-            EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_REFRESH, mVodPlayerCfg));
-        } catch (Exception e) {
-            e.printStackTrace();
+    boolean autoRetry(PlaybackRetryPolicy.ErrorType errorType) {
+        if (!isAdded() || mVideoView == null || mVodPlayerCfg == null) return false;
+        int failedPlayer = fallbackController.getPlayerType();
+        long position = fallbackController.getLastPosition();
+        fallbackController.cancelAttempt(false);
+        if (position > 0) retryResumePosition = position;
+        boolean hasNextUrl = loadFoundVideoUrls != null && !loadFoundVideoUrls.isEmpty();
+        PlaybackRetryPolicy.Action action = retryPolicy.next(errorType, failedPlayer,
+                PlaybackRetryPolicy.requiresExo(videoURL) && failedPlayer < 10,
+                videoURL, hasNextUrl, PlayerHelper.getAvailablePlayers());
+        if (action != PlaybackRetryPolicy.Action.NONE) mHandler.removeMessages(300);
+        switch (action) {
+            case REPLAY_URL:
+                Toast.makeText(requireContext(), getString(R.string.msg_player_fallback,
+                        PlayerHelper.getPlayerName(retryPolicy.getTemporaryPlayerType())), Toast.LENGTH_SHORT).show();
+                startPlayUrl(videoURL, videoHeaders);
+                return true;
+            case NEXT_URL:
+                autoRetryFromLoadFoundVideoUrls();
+                return true;
+            case REFETCH:
+                play(false);
+                return true;
+            default:
+                return false;
         }
     }
 
@@ -1290,8 +1321,20 @@ public class PlayFragment extends BaseLazyFragment {
         }
     }
     public void play(boolean reset) {
-    	if (mVodInfo == null) return;
+        if (mVodInfo == null) return;
         VodInfo.VodSeries vs = mVodInfo.seriesMap.get(mVodInfo.playFlag).get(mVodInfo.getplayIndex());
+        String contentKey = mVodInfo.sourceKey + ":" + mVodInfo.id + ":" + mVodInfo.playFlag
+                + ":" + mVodInfo.getplayIndex() + ":" + vs.url;
+        if (!contentKey.equals(retryContentKey)) {
+            resetPlaybackRetry();
+            retryContentKey = contentKey;
+        } else if (fallbackController != null) {
+            fallbackController.cancelAttempt(false);
+        }
+        videoURL = null;
+        videoHeaders = null;
+        if (danmuController != null) danmuController.clear();
+        mController.setHasDanmu(false);
         EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_REFRESH, mVodInfo.getplayIndex()));
         EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_REFRESH_NOTIFY, mVodInfo.name + "&&" + vs.name));
         String playTitleInfo = mVodInfo.name + " : " + vs.name;
@@ -1516,7 +1559,7 @@ public class PlayFragment extends BaseLazyFragment {
                                 playUrl(rs.getString("url"), headers);
                             } catch (Throwable e) {
                                 e.printStackTrace();
-                                errorWithRetry("解析错误", false);
+                                errorWithRetry("解析错误", false, PlaybackRetryPolicy.ErrorType.PARSE);
 //                                setTip("解析错误", false, true);
                             }
                         }
@@ -1524,7 +1567,7 @@ public class PlayFragment extends BaseLazyFragment {
                         @Override
                         public void onError(Response<String> response) {
                             super.onError(response);
-                            errorWithRetry("解析错误", false);
+                            errorWithRetry("解析错误", false, PlaybackRetryPolicy.ErrorType.PARSE);
 //                            setTip("解析错误", false, true);
                         }
                     });
@@ -1542,7 +1585,7 @@ public class PlayFragment extends BaseLazyFragment {
                 public void run() {
                     JSONObject rs = ApiConfig.get().jsonExt(pb.getUrl(), jxs, webUrl);
                     if (rs == null || !rs.has("url") || rs.optString("url").isEmpty()) {
-//                        errorWithRetry("解析错误", false);
+//                        errorWithRetry("解析错误", false, PlaybackRetryPolicy.ErrorType.PARSE);
                         setTip("解析错误", false, true);
                     } else {
                         HashMap<String, String> headers = null;
@@ -1645,7 +1688,7 @@ public class PlayFragment extends BaseLazyFragment {
                 }else {
                     JSONObject rs = ApiConfig.get().jsonExtMix(parseFlag + "111", pb.getUrl(), finalExtendName, jxs, webUrl);
                     if (rs == null || !rs.has("url") || rs.optString("url").isEmpty()) {
-//                        errorWithRetry("解析错误", false);
+//                        errorWithRetry("解析错误", false, PlaybackRetryPolicy.ErrorType.PARSE);
                         setTip("解析错误", false, true);
                     } else {
                         if (rs.has("parse") && rs.optInt("parse", 0) == 1) {

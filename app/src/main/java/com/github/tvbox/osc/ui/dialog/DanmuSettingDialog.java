@@ -26,13 +26,9 @@ import master.flame.danmaku.ui.widget.DanmakuView;
 
 public class DanmuSettingDialog extends BaseDialog {
 
-    private DanmakuView danmakuView;
-
     public DanmuSettingDialog(@NonNull @NotNull Context context, DanmakuView danmakuView) {
         super(context);
         setContentView(R.layout.dialog_danmu_setting);
-
-        this.danmakuView = danmakuView;
 
         initOnOff();
         initColor();
@@ -43,7 +39,7 @@ public class DanmuSettingDialog extends BaseDialog {
     }
 
     private void initOnOff(){
-        Boolean defaultVal = danmakuView.isShown();
+        Boolean defaultVal = HawkUtils.getDanmuOpen();
         ArrayList<Boolean> players = new ArrayList<>();
         players.add(true);
         players.add(false);
@@ -51,15 +47,12 @@ public class DanmuSettingDialog extends BaseDialog {
         setAdapter(R.id.trv_onoff,new ButtonAdapter.SelectDialogInterface<Boolean>() {
             @Override
             public void click(Boolean value, int pos) {
-                if(value){
-                    danmakuView.show();
-                }else{
-                    danmakuView.hide();
-                }
+                HawkUtils.setDanmuOpen(value);
+                EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_DANMU_OPEN_CHANGED, value));
             }
             @Override
             public String getDisplay(Boolean val) {
-                return val ? "开启" : "关闭";
+                return getContext().getString(val ? R.string.setting_enabled : R.string.setting_disabled);
             }
         }, new DiffUtil.ItemCallback<Boolean>() {
             @Override

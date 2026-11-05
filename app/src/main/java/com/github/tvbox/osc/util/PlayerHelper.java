@@ -1,6 +1,15 @@
 package com.github.tvbox.osc.util;
 
+import android.app.Activity;
 import android.content.Context;
+
+import com.github.tvbox.osc.player.thirdparty.Kodi;
+import com.github.tvbox.osc.player.thirdparty.MXPlayer;
+import com.github.tvbox.osc.player.thirdparty.ReexPlayer;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 
 import com.blankj.utilcode.util.ToastUtils;
 import com.github.tvbox.osc.api.ApiConfig;
@@ -23,6 +32,29 @@ import xyz.doikki.videoplayer.render.RenderViewFactory;
 import xyz.doikki.videoplayer.render.TextureRenderViewFactory;
 
 public class PlayerHelper {
+    public static ArrayList<Integer> getAvailablePlayers() {
+        ArrayList<Integer> players = new ArrayList<>(Arrays.asList(0, 1, 2, 3));
+        if (MXPlayer.getPackageInfo() != null) players.add(10);
+        if (ReexPlayer.getPackageInfo() != null) players.add(11);
+        if (Kodi.getPackageInfo() != null) players.add(12);
+        return players;
+    }
+
+    public static boolean launchExternal(Activity activity, int playerType, String url,
+                                         String title, String subtitle, HashMap<String, String> headers) {
+        try {
+            if (!getAvailablePlayers().contains(playerType)) return false;
+            switch (playerType) {
+                case 10: return MXPlayer.run(activity, url, title, subtitle, headers);
+                case 11: return ReexPlayer.run(activity, url, title, subtitle, headers);
+                case 12: return Kodi.run(activity, url, title, subtitle, headers);
+                default: return false;
+            }
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     public static void updateCfg(VideoView videoView, JSONObject playerCfg) {
         updateCfg(videoView, playerCfg, -1);
     }

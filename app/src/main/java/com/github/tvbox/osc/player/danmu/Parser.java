@@ -12,6 +12,9 @@ import com.lzy.okgo.OkGo;
 import org.json.JSONArray;
 import org.json.JSONException;
 
+import okhttp3.Call;
+import okhttp3.Response;
+
 import master.flame.danmaku.danmaku.model.AlphaValue;
 import master.flame.danmaku.danmaku.model.BaseDanmaku;
 import master.flame.danmaku.danmaku.model.Duration;
@@ -25,22 +28,57 @@ import master.flame.danmaku.danmaku.util.DanmakuUtils;
 
 public class Parser extends BaseDanmakuParser {
 
+    public static final class LoadControl {
+        private volatile boolean cancelled;
+        private volatile Call call;
+
+        public void cancel() {
+            cancelled = true;
+            Call activeCall = call;
+            if (activeCall != null) activeCall.cancel();
+        }
+
+        private void setCall(Call call) {
+            this.call = call;
+            if (cancelled) call.cancel();
+        }
+
+        public boolean isCancelled() {
+            return cancelled || Thread.currentThread().isInterrupted();
+        }
+    }
+
     private final Danmu danmu;
+    private final LoadControl loadControl;
     private BaseDanmaku item;
     private float scaleX;
     private float scaleY;
     private int index;
 
-    public Parser(String path) {
+    public Parser(String path, LoadControl loadControl) {
+        this.loadControl = loadControl;
         this.danmu = Danmu.fromXml(getContent(path));
     }
 
+    public Parser(Danmu danmu, LoadControl loadControl) {
+        this.loadControl = loadControl;
+        this.danmu = danmu;
+    }
+
+    public Danmu getDanmu() {
+        return danmu == null || danmu.getData() == null || danmu.getData().isEmpty() ? null : danmu;
+    }
+
     private String getContent(String path) {
+        if (loadControl.isCancelled()) return "<i/>";
         if (path.startsWith("file")) return FileUtils.read(path);
         if (path.startsWith("http")) {
-            try {
-                return OkGo.<String>get(path).execute().body().string();
-            } catch (Throwable ignored) {
+            Call call = OkGo.<String>get(path).getRawCall();
+            loadControl.setCall(call);
+            try (Response response = call.execute()) {
+                return response.body() == null ? "<i/>" : response.body().string();
+            } catch (Exception ignored) {
+                return "<i/>";
             }
         }
         return path;
@@ -49,13 +87,21 @@ public class Parser extends BaseDanmakuParser {
     @Override
     protected Danmakus parse() {
         Danmakus result = new Danmakus(IDanmakus.ST_BY_TIME);
+        if (danmu == null || danmu.getData() == null) return result;
         for (Danmu.Data data : danmu.getData()) {
-            String[] values = data.getParam().split(",");
-            if (values.length < 4) continue;
-            setParam(values);
-            setText(data.getText());
-            synchronized (result.obtainSynchronizer()) {
-                result.addItem(item);
+            if (loadControl.isCancelled()) break;
+            try {
+                String[] values = data.getParam().split(",");
+                if (values.length < 4) continue;
+                setParam(values);
+                if (item == null) continue;
+                setText(data.getText());
+                if (item == null) continue;
+                synchronized (result.obtainSynchronizer()) {
+                    result.addItem(item);
+                }
+            } catch (RuntimeException ignored) {
+                // Ignore malformed entries without stopping video playback.
             }
         }
         return result;
@@ -75,6 +121,7 @@ public class Parser extends BaseDanmakuParser {
         float size = Float.parseFloat(values[2]) * (mDispDensity - 0.6f);
         int color = HawkUtils.getDanmuColor()? ColorHelper.getCN():(int) ((0x00000000ff000000L | Long.parseLong(values[3])) & 0x00000000ffffffffL);
         item = mContext.mDanmakuFactory.createDanmaku(type, mContext);
+        if (item == null) return;
         item.setTime(time);
         item.setTimer(mTimer);
         item.textSize = size;

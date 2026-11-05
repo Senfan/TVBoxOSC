@@ -1,0 +1,6 @@
+# Copy to signing.properties locally. Never commit the real file or keystore.
+# Relative paths are resolved from the project root. Prefer an encrypted backup elsewhere.
+storeFile=/absolute/path/to/tvbox-release.jks
+storePassword=REPLACE_LOCALLY
+keyAlias=tvbox
+keyPassword=REPLACE_LOCALLY

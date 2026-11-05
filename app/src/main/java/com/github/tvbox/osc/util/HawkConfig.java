@@ -72,6 +72,7 @@ public class HawkConfig {
     public static final String LIVE_SHOW_TIME = "live_show_time";
     public static final String LIVE_SKIP_PASSWORD = "live_skip_password";
     public static final String LIVE_PLAYER_TYPE = "live_player_type"; // 0 系统 1 ijk 2 exo
+    public static final String LIVE_PLAYER_PREFERENCES = "live_player_preferences";
 
     public static boolean isDebug() {
         return Hawk.get(DEBUG_OPEN, false);

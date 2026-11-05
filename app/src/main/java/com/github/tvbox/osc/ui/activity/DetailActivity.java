@@ -1161,8 +1161,8 @@ public class DetailActivity extends BaseActivity {
             enterPictureInPictureMode(params);
             playFragment.getVodController().hideBottom();
             playFragment.getPlayer().postDelayed(() -> {
-                if (!playFragment.getPlayer().isPlaying()) {
-                    playFragment.getVodController().togglePlay();
+                if (isInPictureInPictureMode() && playFragment != null && playFragment.getPlayer() != null) {
+                    playFragment.getPlayer().resumeAfterLifecycle();
                 }
             }, 400);
         }
@@ -1221,7 +1221,12 @@ public class DetailActivity extends BaseActivity {
     @Override
     public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode);
-        registerActionReceiver(supportsPiPMode() && isInPictureInPictureMode);
+        if (supportsPiPMode() && isInPictureInPictureMode) {
+            registerActionReceiver(true);
+        } else if (pipActionReceiver != null) {
+            unregisterReceiver(pipActionReceiver);
+            pipActionReceiver = null;
+        }
     }
 
     /**

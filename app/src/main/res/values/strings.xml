@@ -60,6 +60,21 @@
     <string name="mn_wall_load">Loading Wallpaper</string>
     <string name="mn_wall_reset">Reset</string>
     <string name="mn_play_type">Player</string>
+    <string name="mn_vod_player_preferred">Player priority</string>
+    <string name="mn_danmu">Danmu</string>
+    <string name="setting_enabled">On</string>
+    <string name="setting_disabled">Off</string>
+    <string name="msg_player_fallback">Temporarily trying %1$s. The player selection will not be saved.</string>
+    <string name="player_external_launched">Opened %1$s</string>
+    <string name="player_external_opened">Temporarily opened %1$s. The player selection has not been saved.</string>
+    <string name="player_external_confirm">Did %1$s play successfully? Confirmation will not save the player selection.</string>
+    <string name="player_external_success">Played successfully: use this time only</string>
+    <string name="player_external_failure">Playback failed: try the next player</string>
+    <string name="player_external_cancel">Cancel automatic retry</string>
+    <string name="player_external_failed">Could not open the external player</string>
+    <string name="player_fallback_cancelled">Automatic player retry cancelled</string>
+    <string name="player_temporary_label">%1$s (temporary)</string>
+    <string name="vod_player_preferred_tip">Saved settings for a video take precedence. This preference only applies when the video has no saved settings.</string>
     <string name="mn_play_decode">Decode</string>
     <string name="mn_search">Search Display</string>
     <string name="mn_ratio">Screen Ratio</string>
@@ -127,6 +142,17 @@
     <string name="act_live_play_empty_live_url">The live url is not configured, please go to the settings page to configure it</string>
     <string name="act_live_play_empty_channel">The channel list is empty</string>
     <string name="act_live_play_network_error">The network request for the live-streaming address failed</string>
+    <string name="live_player_group">Channel player</string>
+    <string name="live_player_follow_default">Use live default for this channel</string>
+    <string name="live_player_set_default">Set live default (default: %1$s)</string>
+    <string name="live_player_reset_all">Reset players for all channels</string>
+    <string name="live_player_source_default">Source / app default</string>
+    <string name="live_player_default_saved">Live default set to %1$s. Existing channel selections are unchanged.</string>
+    <string name="live_player_follow_done">This channel now follows the live default</string>
+    <string name="live_player_reset_confirm">Clear player selections for all channels and follow the live default [%1$s]? Screen ratios, favorites and VOD settings will not change.</string>
+    <string name="live_player_confirm">Confirm</string>
+    <string name="live_player_reset_done">All channels now follow the live default</string>
+    <string name="live_player_save_failed">Could not save. Select a supported live player and try again.</string>
     <string name="act_search">Search</string>
     <string name="act_search_clr">Clear</string>
     <string name="act_search_del">Backspace</string>
@@ -220,6 +246,7 @@
     </string-array>
 
     <!--    用于解释怎么处理数据  -->
+
     <string-array name="media_content_tag_General">
         <item>VodPlayerPreferred</item>
     </string-array>
@@ -236,10 +263,8 @@
 
     <!--    用于展示名称-->
     <string-array name="media_content_General">
-        <item>VodPlayerPreferred</item>
-        <!--        用于强制使用设置中的配置 比如设置 首选设置配置 ,首选配置文件 优先单独设置的就不管-->
+        <item>@string/mn_vod_player_preferred</item>
     </string-array>
-
 
     <string-array name="media_content_ExoPlayer">
         <!--  渲染器选择  -->
@@ -265,10 +290,68 @@
     </string-array>
 
     <string-array name="media_content_General_VodPlayerPreferred">
-        <item>Prefer configuration address</item>
-        <item>Prefer setting configuration</item>
+        <item>Prefer data source</item>
+        <item>Prefer global settings</item>
     </string-array>
 
     <!-- 结束 视频设置 相关配置 -->
 
+    <!-- Application updates: independent from content source configuration. -->
+    <string name="update_title">App update</string>
+    <string name="update_back">Back</string>
+    <string name="update_current_version">Current version: %1$s (%2$d)</string>
+    <string name="update_version_unknown">Current version unavailable</string>
+    <string name="update_entry_unavailable">The app update page is unavailable in this build.</string>
+    <string name="update_address">App update address</string>
+    <string name="update_address_hint">Enter a trusted HTTPS update manifest address</string>
+    <string name="update_address_help">This address is separate from content sources. Saving does not connect to the network.</string>
+    <string name="update_save_first">The address has changed. Save it before checking for updates.</string>
+    <string name="update_save">Save address</string>
+    <string name="update_clear">Clear address</string>
+    <string name="update_check">Check for updates</string>
+    <string name="update_cancel">Cancel</string>
+    <string name="update_cancel_operation">Cancel operation</string>
+    <string name="update_clear_confirm">Clear only the app update address? Content sources, playback settings and other app data will not change.</string>
+    <string name="update_address_saved">Address saved. Choose Check for updates when you are ready.</string>
+    <string name="update_address_cleared">App update address cleared. No automatic check will run.</string>
+    <string name="update_address_invalid">Invalid app update address. Enter a trusted HTTPS address.</string>
+    <string name="update_unconfigured">No update address configured. Save an address to enable manual checks.</string>
+    <string name="update_idle">Ready for a manual update check</string>
+    <string name="update_checking">Checking for updates</string>
+    <string name="update_current">Already on the latest version</string>
+    <string name="update_available">Update available</string>
+    <string name="update_downloading">Downloading update</string>
+    <string name="update_validating">Verifying installation package</string>
+    <string name="update_ready">Package verified. Choose Install to verify again and open system confirmation.</string>
+    <string name="update_handoff">System installer opened. Installation is not yet confirmed.</string>
+    <string name="update_updated">Installed version confirms the update</string>
+    <string name="update_cancelled">Update operation cancelled</string>
+    <string name="update_error">Update failed. You can check again.</string>
+    <string name="update_new_version">Update version: %1$s (%2$d)\nPackage size: %3$s</string>
+    <string name="update_notes">Release notes\n%1$s</string>
+    <string name="update_no_notes">No release notes provided.</string>
+    <string name="update_size_unknown">Unknown size</string>
+    <string name="update_progress">Downloaded %1$s / %2$s</string>
+    <string name="update_progress_unknown">Downloaded %1$s (total size unknown)</string>
+    <string name="update_download">Download update</string>
+    <string name="update_install">Install</string>
+    <string name="update_download_confirm">Download version %1$s (%2$d)?\nPackage size: %3$s\nUpdate address: %4$s\n\nOnly download from a source you trust. Downloading will not install the app automatically.</string>
+    <string name="update_operation_cancelled">Cancellation requested. You can check for updates again when the operation stops.</string>
+    <string name="update_artifact_missing">Update information is missing. Check for updates again.</string>
+    <string name="update_apk_missing">The verified installation package is unavailable. Check for updates again.</string>
+    <string name="update_permission_needed">Installation permission is required. No installer has been opened.</string>
+    <string name="update_permission_confirm">Open system settings to allow this app to install packages? Only allow packages from a trusted source. Returning here will not start installation; choose Install again after granting permission.</string>
+    <string name="update_open_settings">Open settings</string>
+    <string name="update_permission_waiting">Waiting for installation source settings. Returning will not install automatically.</string>
+    <string name="update_permission_revalidating">Installation source is allowed. Verifying the package again; installation will not start automatically.</string>
+    <string name="update_permission_ready">Installation source is allowed and the package is verified. Choose Install again to open system confirmation.</string>
+    <string name="update_permission_denied">Installation source was not allowed or authorization was cancelled. Nothing was installed; check for updates again before retrying installation.</string>
+    <string name="update_permission_settings_missing">No system page can grant installation source permission. Nothing was installed.</string>
+    <string name="update_permission_failed">Cannot access installation source permission. Nothing was installed.</string>
+    <string name="update_installer_missing">No system installer can open this package. Nothing was installed.</string>
+    <string name="update_install_failed">Cannot hand the package to the system installer. Nothing was installed.</string>
+    <string name="update_install_handoff">Package handed to the system installer. Confirm there; this does not mean installation succeeded.</string>
+    <string name="update_install_returned">Returned from the installer. The installed version will determine whether the update succeeded.</string>
+    <string name="update_install_cancelled">System installation was cancelled or unfinished. Checking the actual installed version.</string>
+    <string name="update_install_return_failed">System installation reported failure. Checking the actual installed version.</string>
 </resources>

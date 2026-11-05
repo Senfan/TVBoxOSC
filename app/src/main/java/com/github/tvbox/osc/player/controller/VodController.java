@@ -708,20 +708,7 @@ public class VodController extends BaseController {
                 FastClickCheckUtil.check(view);
                 try {
                     int defaultPos = mPlayerConfig.getInt("pl");
-                    ArrayList<Integer> players = new ArrayList<>();
-                    players.add(0);  // System
-                    players.add(1);  // IJK
-                    players.add(2);  // Exo
-                    players.add(3);  // Ali
-                    if (mxPlayerExist) {
-                        players.add(10);
-                    }
-                    if (reexPlayerExist) {
-                        players.add(11);
-                    }
-                    if (KodiExist) {
-                        players.add(12);
-                    }
+                    ArrayList<Integer> players = PlayerHelper.getAvailablePlayers();
                     SelectDialog<Integer> dialog = new SelectDialog<>(mActivity);
                     dialog.setTip(HomeActivity.getRes().getString(R.string.dia_player));
                     dialog.setAdapter(null, new SelectDialogAdapter.SelectDialogInterface<Integer>() {
@@ -1048,23 +1035,26 @@ public class VodController extends BaseController {
     }
 
     private JSONObject mPlayerConfig = null;
-
-    private boolean mxPlayerExist = false;
-    private boolean reexPlayerExist = false;
-    private boolean KodiExist = false;
+    private int effectivePlayerType = -1;
 
     public void setPlayerConfig(JSONObject playerCfg) {
+        effectivePlayerType = -1;
         this.mPlayerConfig = playerCfg;
         updatePlayerCfgView();
-        mxPlayerExist = MXPlayer.getPackageInfo() != null;
-        reexPlayerExist = ReexPlayer.getPackageInfo() != null;
-        KodiExist = Kodi.getPackageInfo() != null;
+    }
+
+    public void setEffectivePlayerType(int playerType) {
+        effectivePlayerType = playerType;
+        updatePlayerCfgView();
     }
 
     void updatePlayerCfgView() {
         try {
-            int playerType = mPlayerConfig.getInt("pl");
-            mPlayerTxt.setText(PlayerHelper.getPlayerName(playerType));
+            int savedPlayerType = mPlayerConfig.getInt("pl");
+            int playerType = effectivePlayerType < 0 ? savedPlayerType : effectivePlayerType;
+            String playerName = PlayerHelper.getPlayerName(playerType);
+            mPlayerTxt.setText(playerType == savedPlayerType ? playerName
+                    : getContext().getString(R.string.player_temporary_label, playerName));
             mPlayerScaleTxt.setText(PlayerHelper.getScaleName(mPlayerConfig.getInt("sc")));
             mPlayerIJKBtn.setText(mPlayerConfig.getString("ijk"));
             mPlayerIJKBtn.setVisibility(playerType == 1 ? VISIBLE : GONE);

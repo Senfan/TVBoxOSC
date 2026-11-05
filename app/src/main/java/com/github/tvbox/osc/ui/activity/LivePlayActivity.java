@@ -49,6 +49,7 @@ import com.github.tvbox.osc.ui.adapter.LiveSettingGroupAdapter;
 import com.github.tvbox.osc.ui.adapter.LiveSettingItemAdapter;
 import com.github.tvbox.osc.ui.dialog.ApiHistoryDialog;
 import com.github.tvbox.osc.ui.dialog.LivePasswordDialog;
+import com.github.tvbox.osc.ui.dialog.TipDialog;
 import com.github.tvbox.osc.util.EpgUtil;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
 import com.github.tvbox.osc.util.HawkConfig;
@@ -100,6 +101,7 @@ public class LivePlayActivity extends BaseActivity {
     // Main View
     private VideoView mVideoView;
     private LiveController controller;
+    private TipDialog livePlayerResetDialog;
 
     // Left Channel View
     private LinearLayout tvLeftChannelListLayout;
@@ -539,6 +541,7 @@ public class LivePlayActivity extends BaseActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (livePlayerResetDialog != null) livePlayerResetDialog.dismiss();
         if (mVideoView != null) {
             mVideoView.release();
             mVideoView = null;
@@ -1528,7 +1531,7 @@ public class LivePlayActivity extends BaseActivity {
                 liveSettingItemAdapter.selectItem(livePlayerManager.getLivePlayerScale(), true, true);
                 break;
             case 2:
-                liveSettingItemAdapter.selectItem(livePlayerManager.getLivePlayerType(), true, true);
+                refreshLivePlayerMenu();
                 break;
         }
         int scrollToPosition = liveSettingItemAdapter.getSelectedItemIndex();
@@ -1584,8 +1587,102 @@ public class LivePlayActivity extends BaseActivity {
         });
     }
 
+    private String getLiveDefaultPlayerName() {
+        int index = livePlayerManager.getDefaultLivePlayerType();
+        if (index < 0 || index > 3) return getString(R.string.live_player_source_default);
+        return liveSettingGroupList.get(2).getLiveSettingItems().get(index).getItemName();
+    }
+
+    private void refreshLivePlayerMenu() {
+        liveSettingGroupList.get(2).getLiveSettingItems().get(5)
+                .setItemName(getString(R.string.live_player_set_default, getLiveDefaultPlayerName()));
+        if (liveSettingGroupAdapter.getSelectedGroupIndex() == 2) {
+            liveSettingItemAdapter.setNewData(liveSettingGroupList.get(2).getLiveSettingItems());
+            liveSettingItemAdapter.selectItem(livePlayerManager.getLivePlayerType(), true, true);
+        }
+    }
+
+    private void applyLivePlayerPreference() {
+        if (mVideoView == null || !isCurrentLiveChannelValid()) return;
+        String channelName = currentLiveChannelItem.getChannelName();
+        boolean playerChanged = livePlayerManager.isLivePlayerChanged(channelName);
+        if (playerChanged) mVideoView.release();
+        livePlayerManager.getLiveChannelPlayer(mVideoView, channelName);
+        if (playerChanged) {
+            mVideoView.setUrl(currentLiveChannelItem.getUrl(), setPlayHeaders(currentLiveChannelItem.getUrl()));
+            mVideoView.start();
+        }
+        refreshLivePlayerMenu();
+    }
+
+    private void showLivePlayerResetDialog() {
+        if (livePlayerResetDialog != null) return;
+        mHandler.removeCallbacks(mHideSettingLayoutRun);
+        livePlayerResetDialog = new TipDialog(this,
+                getString(R.string.live_player_reset_confirm, getLiveDefaultPlayerName()),
+                getString(R.string.hm_cancel), getString(R.string.live_player_confirm), new TipDialog.OnListener() {
+            @Override
+            public void left() {
+                livePlayerResetDialog.dismiss();
+            }
+
+            @Override
+            public void right() {
+                if (livePlayerManager.resetLivePlayerOverrides()) {
+                    applyLivePlayerPreference();
+                    Toast.makeText(LivePlayActivity.this, R.string.live_player_reset_done, Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(LivePlayActivity.this, R.string.live_player_save_failed, Toast.LENGTH_SHORT).show();
+                }
+                livePlayerResetDialog.dismiss();
+            }
+
+            @Override
+            public void cancel() {
+            }
+        });
+        livePlayerResetDialog.setOnDismissListener(dialog -> {
+            livePlayerResetDialog = null;
+            if (!isFinishing() && !isDestroyed() && tvRightSettingLayout.getVisibility() == View.VISIBLE)
+                mHandler.postDelayed(mHideSettingLayoutRun, 5000);
+        });
+        livePlayerResetDialog.show();
+        livePlayerResetDialog.findViewById(R.id.leftBtn).requestFocus();
+    }
+
     private void clickSettingItem(int position) {
         int settingGroupIndex = liveSettingGroupAdapter.getSelectedGroupIndex();
+        if (settingGroupIndex == 2) {
+            if (!isCurrentLiveChannelValid()) return;
+            switch (position) {
+                case 4://当前频道跟随默认
+                    if (livePlayerManager.followLiveDefaultPlayer(currentLiveChannelItem.getChannelName())) {
+                        applyLivePlayerPreference();
+                        Toast.makeText(this, R.string.live_player_follow_done, Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(this, R.string.live_player_save_failed, Toast.LENGTH_SHORT).show();
+                    }
+                    return;
+                case 5://设为直播默认
+                    if (livePlayerManager.setLiveDefaultPlayer()) {
+                        refreshLivePlayerMenu();
+                        Toast.makeText(this, getString(R.string.live_player_default_saved, getLiveDefaultPlayerName()), Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(this, R.string.live_player_save_failed, Toast.LENGTH_SHORT).show();
+                    }
+                    return;
+                case 6://重置全部频道播放器
+                    showLivePlayerResetDialog();
+                    return;
+                default:
+                    if (position < 0 || position > 3) return;
+                    if (livePlayerManager.rememberLivePlayerType(position, currentLiveChannelItem.getChannelName()))
+                        applyLivePlayerPreference();
+                    else
+                        Toast.makeText(this, R.string.live_player_save_failed, Toast.LENGTH_SHORT).show();
+                    return;
+            }
+        }
         if (settingGroupIndex < 4) {
             if (position == liveSettingItemAdapter.getSelectedItemIndex())
                 return;
@@ -1598,12 +1695,6 @@ public class LivePlayActivity extends BaseActivity {
                 break;
             case 1://画面比例
                 livePlayerManager.changeLivePlayerScale(mVideoView, position, currentLiveChannelItem.getChannelName());
-                break;
-            case 2://播放解码
-                mVideoView.release();
-                livePlayerManager.changeLivePlayerType(mVideoView, position, currentLiveChannelItem.getChannelName());
-                mVideoView.setUrl(currentLiveChannelItem.getUrl(), setPlayHeaders(currentLiveChannelItem.getUrl()));
-                mVideoView.start();
                 break;
             case 3://超时换源
                 Hawk.put(HawkConfig.LIVE_CONNECT_TIMEOUT, position);
@@ -1841,11 +1932,14 @@ public class LivePlayActivity extends BaseActivity {
     }
 
     private void initLiveSettingGroupList() {
-        ArrayList<String> groupNames = new ArrayList<>(Arrays.asList("线路选择", "画面比例", "播放解码", "超时换源", "偏好设置", "直播地址", "退出直播"));
+        ArrayList<String> groupNames = new ArrayList<>(Arrays.asList("线路选择", "画面比例", getString(R.string.live_player_group), "超时换源", "偏好设置", "直播地址", "退出直播"));
         ArrayList<ArrayList<String>> itemsArrayList = new ArrayList<>();
         ArrayList<String> sourceItems = new ArrayList<>();
         ArrayList<String> scaleItems = new ArrayList<>(Arrays.asList("默认", "16:9", "4:3", "填充", "原始", "裁剪"));
-        ArrayList<String> playerDecoderItems = new ArrayList<>(Arrays.asList("系统", "ijk硬解", "ijk软解", "exo"));
+        ArrayList<String> playerDecoderItems = new ArrayList<>(Arrays.asList("系统", "ijk硬解", "ijk软解", "exo",
+                getString(R.string.live_player_follow_default),
+                getString(R.string.live_player_set_default, getString(R.string.live_player_source_default)),
+                getString(R.string.live_player_reset_all)));
         ArrayList<String> timeoutItems = new ArrayList<>(Arrays.asList("关", "5s", "10s", "15s", "20s", "25s", "30s"));
         ArrayList<String> personalSettingItems = new ArrayList<>(Arrays.asList("显示时间", "显示网速", "换台反转", "跨选分类", "关闭密码"));
         ArrayList<String> liveAdd = new ArrayList<>(Arrays.asList("列表历史"));
