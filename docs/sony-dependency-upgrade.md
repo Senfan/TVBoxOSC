@@ -4,10 +4,10 @@
 
 ## 目标与状态
 
-- 用户确认曾在该电视安装ARM64；最终目标为arm64-v8a/generic/normal，不改包名或固定签名。
+- 2026-11-06 实际Sony安装拒绝仅含arm64-v8a的rc.1，用户核对可安装旧包名含armeabi；真实行为优先于此前判断。Sony目标改为armeabi-v7a/generic/normal，rc.2另保留arm64-v8a独立APK；不改包名或固定签名。
 - 电视当前Android API/固件尚未实测。型号资料不能冒充该设备当前系统；仍保持min21，不用overrideLibrary绕过min23/24要求。
 - compile37、target34、AGP9.5.0、Gradle9.8.2、Kotlin2.4.21已进入真实构建；Gradle归档已按官方SHA256校验。
-- legacy-kapt来自com.android.tools.build:gradle-kotlin:9.5.0；公开AndServer生成器、kapt、Kotlin/Java、R8和ARM64 normal生产签名Release均已实际执行成功。迁移中间态的receiver与OkHttp Kotlin/DNS编译错误已修正；最终产物身份和剩余验收见独立候选目录记录。
+- legacy-kapt来自com.android.tools.build:gradle-kotlin:9.5.0；公开AndServer生成器、kapt、Kotlin/Java和R8已实际执行成功；arm64-v8a与armeabi-v7a的normal生产签名Release均完成构建和ELF/签名核验。迁移中间态的receiver与OkHttp Kotlin/DNS编译错误已修正；最终产物身份和剩余验收以各Release资产记录为准。
 - 所有版本固定，Catalog不是lockfile。runtime图、锁和校验文件须以真实Gradle输出为准；首次获取的SHA256不是来源签名。
 - Python默认不配置；其旧Chaquopy/Python源码保留但不声称已迁移。隔离须用任务图、runtime图和最终APK三层验证。
 

@@ -2,7 +2,7 @@
 
 版本查询截止 2026-11-05。本文是源码/接口核实记录，不是升级完成或真机兼容证书。
 
-用户已确认这台电视曾安装 ARM64 包，候选产物使用 arm64-v8a / generic / normal。未取得电视当前 Android API/固件、codec/HDR 能力及原生库加载实测；不删除仓库的 armeabi-v7a。
+2026-11-06 实际安装时，Sony电视明确拒绝仅含`arm64-v8a`的rc.1；用户核对此前可安装包文件名含`armeabi`。因此此前“ARM64可安装”的判断被实际设备行为推翻：该电视的Android应用环境按`armeabi-v7a`处理（即使芯片本身可能是64位）。rc.2同时提供两个独立ABI APK，Sony目标使用armeabi-v7a；仍未取得电视当前Android API/固件、codec/HDR能力或ADB数据。
 
 ## 可复核现状
 
@@ -34,7 +34,7 @@
 - Java native 声明、JNI 注册/导出、关联 SO、codec/protocol 编译选项一致。
 - 来源标签/commit、归档摘要、构建工具与完整许可证/版权通知可追溯。
 - 保留当前协议、音轨、字幕、硬解、回退与用户偏好，不通过删功能达标。
-- 单 ARM64 APK，校验重复 SO、链接依赖、最低 API、16KB 页兼容；仅有 ARM64 文件名不够。
+- 每个APK只含单一ABI：Sony使用armeabi-v7a，另提供arm64-v8a；逐包校验重复SO、ELF class/machine、链接依赖与最低API。16KB页兼容主要影响64位native，仍需真实设备/工具链验证；文件名本身不是架构证明。
 - 新库实际加载与受控媒体行为分别测试。当前不播放真实影片；未做的运行验证必须明确标未验证。
 
 ## 上游证据入口

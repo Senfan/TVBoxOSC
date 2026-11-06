@@ -19,11 +19,18 @@ def command(*args):
     return result.stdout
 
 
-def verify(apk, sdk):
+def verify(apk, sdk, version_code=7, version_name='1.1.1', abi='arm64-v8a'):
+    architectures = {
+        'arm64-v8a': (b'\x02\x01', 183),
+        'armeabi-v7a': (b'\x01\x01', 40),
+    }
+    if abi not in architectures:
+        raise ValueError('Unsupported expected ABI: ' + abi)
+    elf_class_data, machine = architectures[abi]
     tools = sdk / 'build-tools/36.0.0'
     badging = command(tools / 'aapt', 'dump', 'badging', apk)
-    for text in (f"package: name='{PACKAGE}' versionCode='7' versionName='1.1.1'",
-                 "sdkVersion:'21'", "targetSdkVersion:'34'", "native-code: 'arm64-v8a'"):
+    for text in (f"package: name='{PACKAGE}' versionCode='{version_code}' versionName='{version_name}'",
+                 "sdkVersion:'21'", "targetSdkVersion:'34'", f"native-code: '{abi}'"):
         if text not in badging:
             raise ValueError('Unexpected APK identity: missing ' + text)
     if 'application-debuggable' in badging:
@@ -49,16 +56,17 @@ def verify(apk, sdk):
         for name in names:
             if not name.startswith('lib/') or not name.endswith('.so'):
                 continue
-            if not name.startswith('lib/arm64-v8a/'):
+            if not name.startswith(f'lib/{abi}/'):
                 raise ValueError('Unexpected native ABI: ' + name)
             data = archive.read(name)
-            if data[:4] != b'\x7fELF' or data[4:6] != b'\x02\x01' or int.from_bytes(data[18:20], 'little') != 183:
-                raise ValueError('Not ARM64 ELF: ' + name)
+            if (data[:4] != b'\x7fELF' or data[4:6] != elf_class_data
+                    or int.from_bytes(data[18:20], 'little') != machine):
+                raise ValueError(f'Not {abi} ELF: ' + name)
             libraries.append({'path': name, 'sizeBytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()})
         if not libraries:
             raise ValueError('No native libraries')
-    return dict(applicationId=PACKAGE, versionCode=7, versionName='1.1.1', minSdk=21, targetSdk=34,
-                abi='arm64-v8a', debuggable=False, certificateSha256=CERTIFICATE,
+    return dict(applicationId=PACKAGE, versionCode=version_code, versionName=version_name, minSdk=21, targetSdk=34,
+                abi=abi, debuggable=False, certificateSha256=CERTIFICATE,
                 v1Verified=True, v2Verified=True, sizeBytes=apk.stat().st_size,
                 sha256=hashlib.sha256(apk.read_bytes()).hexdigest(), pythonContentPresent=False,
                 andServerDiscoveryAssetVerified=True, nativeLibraries=libraries,
@@ -70,13 +78,16 @@ if __name__ == '__main__':
     parser.add_argument('--apk', type=Path, required=True)
     parser.add_argument('--sdk', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--version-code', type=int, default=7)
+    parser.add_argument('--version-name', default='1.1.1')
+    parser.add_argument('--abi', choices=('arm64-v8a', 'armeabi-v7a'), default='arm64-v8a')
     args = parser.parse_args()
     if any(path.exists() for path in (args.output, args.output.with_suffix('.badging.txt'), args.output.with_suffix('.signing.txt'))):
         parser.error('Refusing to overwrite an existing verification report')
-    result, badging, signing = verify(args.apk, args.sdk)
+    result, badging, signing = verify(args.apk, args.sdk, args.version_code, args.version_name, args.abi)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
     args.output.with_suffix('.badging.txt').write_text(badging)
     args.output.with_suffix('.signing.txt').write_text(signing)
     print(json.dumps({k: v for k, v in result.items() if k != 'nativeLibraries'}, ensure_ascii=False, indent=2))
-    print('ARM64 ELF libraries:', len(result['nativeLibraries']))
+    print(f"{args.abi} ELF libraries:", len(result['nativeLibraries']))
