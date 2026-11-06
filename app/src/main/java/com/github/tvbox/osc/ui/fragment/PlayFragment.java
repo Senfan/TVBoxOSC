@@ -96,7 +96,9 @@ import com.lzy.okgo.OkGo;
 import com.lzy.okgo.callback.AbsCallback;
 import com.lzy.okgo.model.HttpHeaders;
 import com.lzy.okgo.model.Response;
-import com.obsez.android.lib.filechooser.ChooserDialog;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import com.github.tvbox.osc.util.MediaFileAccess;
 import com.orhanobut.hawk.Hawk;
 
 import org.greenrobot.eventbus.EventBus;
@@ -150,7 +152,18 @@ public class PlayFragment extends BaseLazyFragment {
     private String retryContentKey;
     private HashMap<String, String> videoHeaders;
     private PlaybackFallbackController fallbackController;
+    private final MediaFileAccess.PendingExternalPlayback pendingExternalPlayback =
+            new MediaFileAccess.PendingExternalPlayback();
     private long retryResumePosition = -1;
+    private final ActivityResultLauncher<String[]> subtitlePicker = registerForActivityResult(
+            new ActivityResultContracts.OpenDocument(), uri -> {
+                if (uri == null || !isAdded()) return;
+                MediaFileAccess.importSubtitle(requireContext(), uri, (path, error) -> {
+                    if (!isAdded() || mVideoView == null) return;
+                    if (error != null) Toast.makeText(requireContext(), error, Toast.LENGTH_SHORT).show();
+                    else setSubtitle(path);
+                });
+            });
 
     private String videoURL;
     private long videoDuration = -1;
@@ -221,6 +234,7 @@ public class PlayFragment extends BaseLazyFragment {
     }
 
     private void resetPlaybackRetry() {
+        pendingExternalPlayback.cancel();
         retryPolicy.reset();
         retryResumePosition = -1;
         if (fallbackController != null) fallbackController.cancelAttempt(true);
@@ -452,18 +466,12 @@ public class PlayFragment extends BaseLazyFragment {
         subtitleDialog.setLocalFileChooserListener(new SubtitleDialog.LocalFileChooserListener() {
         	@Override
             public void openLocalFileChooserDialog() {
-                new ChooserDialog(getActivity())
-                    .withFilter(false, false, "srt", "ass", "scc", "stl", "ttml")
-                    .withStartFile("/storage/emulated/0/Download")
-                    .withChosenListener(new ChooserDialog.Result() {
-	                    @Override
-	                    public void onChoosePath(String path, File pathFile) {
-	                        LOG.i("Local SubtitleBean Path: " + path);
-	                        setSubtitle(path); //设置字幕
-	                    }
-	                })
-                    .build()
-                    .show();
+                try {
+                    subtitlePicker.launch(new String[]{"*/*"});
+                } catch (android.content.ActivityNotFoundException e) {
+                    android.util.Log.w("PlayFragment", "No document picker available", e);
+                    Toast.makeText(requireContext(), "系统未提供文件选择器", Toast.LENGTH_SHORT).show();
+                }
             }
         });
         subtitleDialog.show();
@@ -638,12 +646,7 @@ public class PlayFragment extends BaseLazyFragment {
     }
 
     void openMyVideo() {
-        Intent i = new Intent();
-        i.addCategory(Intent.CATEGORY_DEFAULT);
-        i.setAction(Intent.ACTION_VIEW);
-        if (videoURL == null) return;
-        i.setDataAndType(Uri.parse(videoURL), "video/*");
-        startActivity(Intent.createChooser(i, "Open Video with ..."));
+        if (videoURL != null && isAdded()) MediaFileAccess.openVideo(requireActivity(), videoURL);
     }
 
     void setTip(String msg, boolean loading, boolean err) {
@@ -831,6 +834,7 @@ public class PlayFragment extends BaseLazyFragment {
                     || !TextUtils.equals(contentKey, retryContentKey)
                     || generation != fallbackController.getGeneration()) return;
             stopParse();
+            pendingExternalPlayback.cancel();
             fallbackController.cancelAttempt(false);
             mVideoView.release();
             videoURL = url;
@@ -851,14 +855,23 @@ public class PlayFragment extends BaseLazyFragment {
             if (extPlay) {
                 VodInfo.VodSeries vs = mVodInfo.seriesMap.get(mVodInfo.playFlag).get(mVodInfo.getplayIndex());
                 String title = mVodInfo.name + " : " + vs.name;
-                if (PlayerHelper.launchExternal(requireActivity(), playerType, url, title, playSubtitle, videoHeaders)) {
-                    fallbackController.externalOpened();
-                    setTip(getString(pending ? R.string.player_external_opened : R.string.player_external_launched,
-                            PlayerHelper.getPlayerName(playerType)), false, false);
-                } else {
-                    extPlay = false;
-                    errorWithRetry(getString(R.string.player_external_failed), false, PlaybackRetryPolicy.ErrorType.PLAYER);
-                }
+                long externalRequest = pendingExternalPlayback.begin();
+                MediaFileAccess.prepareExternal(requireContext(), url, playSubtitle, (video, subtitle, error) -> {
+                    if (!isAdded() || mVideoView == null) return;
+                    pendingExternalPlayback.complete(externalRequest, token, () -> {
+                        if (!isAdded() || mVideoView == null || token != fallbackController.getGeneration()) return;
+                        if (error == null && PlayerHelper.launchExternal(requireActivity(), playerType,
+                                video, title, subtitle, videoHeaders)) {
+                            fallbackController.externalOpened();
+                            setTip(getString(pending ? R.string.player_external_opened : R.string.player_external_launched,
+                                    PlayerHelper.getPlayerName(playerType)), false, false);
+                        } else {
+                            extPlay = false;
+                            errorWithRetry(getString(R.string.player_external_failed), false, PlaybackRetryPolicy.ErrorType.PLAYER);
+                        }
+                    });
+                    pendingExternalPlayback.consume(fallbackController.getGeneration(), isResumed() && !isHidden());
+                });
                 return;
             }
             hideTip();
@@ -1143,7 +1156,10 @@ public class PlayFragment extends BaseLazyFragment {
         if (fallbackController != null) fallbackController.setForeground(false);
         if (mVideoView != null) {
             getVodController().mProgressTop.setAlpha(0);
-            mVideoView.pauseForLifecycle();
+            if (!(getActivity() instanceof DetailActivity)
+                    || !((DetailActivity) getActivity()).keepPlaybackInBackground(mVideoView)) {
+                mVideoView.pauseForLifecycle();
+            }
         }
     }
 
@@ -1154,6 +1170,7 @@ public class PlayFragment extends BaseLazyFragment {
             fallbackController.setForeground(!isHidden());
             fallbackController.showExternalConfirmation(getActivity(), !isHidden()
                     && (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || !requireActivity().isInPictureInPictureMode()));
+            pendingExternalPlayback.consume(fallbackController.getGeneration(), !isHidden());
         }
         if (mVideoView != null) {
             getVodController().mProgressTop.setAlpha(1);
@@ -1174,6 +1191,7 @@ public class PlayFragment extends BaseLazyFragment {
             fallbackController.setForeground(!hidden && isResumed());
             fallbackController.showExternalConfirmation(getActivity(), !hidden && isResumed()
                     && (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || !requireActivity().isInPictureInPictureMode()));
+            pendingExternalPlayback.consume(fallbackController.getGeneration(), !hidden && isResumed());
         }
         if (hidden) {
             if (mVideoView != null) {
@@ -1189,6 +1207,10 @@ public class PlayFragment extends BaseLazyFragment {
 
     @Override
     public void onDestroyView() {
+        pendingExternalPlayback.cancel();
+        if (getActivity() instanceof DetailActivity) {
+            ((DetailActivity) getActivity()).onPreviewPlayerDestroyed();
+        }
         super.onDestroyView();
         if (fallbackController != null) fallbackController.release();
         if (sourceViewModel != null) sourceViewModel.cancelPlayRequest();
@@ -1212,6 +1234,14 @@ public class PlayFragment extends BaseLazyFragment {
     
     public MyVideoView getPlayer() {
         return mVideoView;
+    }
+
+    public String getPlaybackTitle() {
+        if (mVodInfo == null) return "";
+        List<VodInfo.VodSeries> series = mVodInfo.seriesMap == null ? null : mVodInfo.seriesMap.get(mVodInfo.playFlag);
+        int index = mVodInfo.getplayIndex();
+        return mVodInfo.name + "&&" + (series != null && index >= 0 && index < series.size()
+                ? series.get(index).name : "");
     }
 
     private VodInfo mVodInfo;

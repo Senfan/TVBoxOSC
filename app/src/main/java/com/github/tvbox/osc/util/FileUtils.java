@@ -41,16 +41,12 @@ import okhttp3.Response;
 public class FileUtils {
 
     public static File open(String str) {
-        return new File(getExternalCachePath() + "/qjscache_" + str + ".js");
+        return new File(getCachePath() + "/qjscache_" + str + ".js");
     }
 
     public static boolean writeSimple(byte[] data, File dst) {
         try {
-            if (dst.exists())
-                dst.delete();
-            BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(dst));
-            bos.write(data);
-            bos.close();
+            WorkspaceIO.writeAtomic(new java.io.ByteArrayInputStream(data), dst, WorkspaceIO.MAX_FILE_BYTES);
             return true;
         } catch (IOException e) {
             e.printStackTrace();
@@ -59,13 +55,8 @@ public class FileUtils {
     }
 
     public static byte[] readSimple(File src) {
-        try {
-            BufferedInputStream bis = new BufferedInputStream(new FileInputStream(src));
-            int len = bis.available();
-            byte[] data = new byte[len];
-            bis.read(data);
-            bis.close();
-            return data;
+        try (InputStream input = new FileInputStream(src)) {
+            return WorkspaceIO.read(input, WorkspaceIO.MAX_FILE_BYTES);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -98,24 +89,13 @@ public class FileUtils {
     }
 
     public static void copyFile(File source, File dest) throws IOException {
-        InputStream is = null;
-        OutputStream os = null;
-        try {
-            is = new FileInputStream(source);
-            os = new FileOutputStream(dest);
-            byte[] buffer = new byte[1024];
-            int length;
-            while ((length = is.read(buffer)) > 0) {
-                os.write(buffer, 0, length);
-            }
-        } finally {
-            is.close();
-            os.close();
+        try (InputStream input = new FileInputStream(source)) {
+            WorkspaceIO.writeAtomic(input, dest, WorkspaceIO.MAX_TOTAL_BYTES);
         }
     }
     public static String getRootPath() {
-        return Environment.getExternalStorageDirectory()
-            .getAbsolutePath();
+        try { return WorkspaceFiles.root().getAbsolutePath(); }
+        catch (IOException e) { throw new IllegalStateException("私有工作区不可用", e); }
     }
     public static void recursiveDelete(File file) {
         try {
@@ -137,11 +117,13 @@ public class FileUtils {
     public static String loadModule(String name) {
         String rel = null;
         try {
-            if (name.contains("gbk.js")) {
+            File local = WorkspaceFiles.fromLocalUrl(name);
+            if (local != null) return WorkspaceIO.text(local);
+            if (name.equals("gbk.js")) {
                 name = "gbk.js";
-            } else if (name.contains("模板.js")) {
+            } else if (name.equals("模板.js")) {
                 name = "模板.js";
-            } else if (name.contains("cat.js")) {
+            } else if (name.equals("cat.js")) {
                 name = "cat.js";
             }
             LOG.i("echo-loadModule "+name);
@@ -164,21 +146,12 @@ public class FileUtils {
                 rel= getAsOpen(name.substring(9));
             } else if (isAsFile(name, "js/lib")) {
                 rel=getAsOpen("js/lib/" + name);
-            } else if (name.startsWith("file://")) {
-                rel=get(ControlManager.get()
-                        .getAddress(true) + "file/" + name.replace("file:///", "")
-                        .replace("file://", ""));
-            } else if (name.startsWith("clan://localhost/")) {
-                rel=get(ControlManager.get()
-                        .getAddress(true) + "file/" + name.replace("clan://localhost/", ""));
             } else if (name.startsWith("clan://")) {
-                String substring = name.substring(7);
-                int indexOf = substring.indexOf(47);
-                rel=get("http://" + substring.substring(0, indexOf) + "/file/" + substring.substring(indexOf + 1));
+                rel = get(WorkspaceFiles.toHttp(name));
             }
         } catch (Exception e) {
             e.printStackTrace();
-            return name;
+            return "";
         }
         return rel;
     }
@@ -288,9 +261,10 @@ public class FileUtils {
             } else {
                 response =OkGo.<String>get(str).headers("User-Agent", str.startsWith("https://gitcode.net/") ? UA.random() : "okhttp/3.15").execute();
             }
-            if (response.isSuccessful() && response.body() != null){
-                return new String(response.body().bytes(), "UTF-8");
-            } else {
+            try (Response closeable = response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    return new String(WorkspaceIO.read(response.body().byteStream(), WorkspaceIO.MAX_TEXT_BYTES), StandardCharsets.UTF_8);
+                }
                 return "";
             }
         } catch (IOException e) {
@@ -380,20 +354,20 @@ public class FileUtils {
     }
 
     public static String read(InputStream is) {
-        try {
-            byte[] data = new byte[is.available()];
-            is.read(data);
-            is.close();
-            return new String(data, StandardCharsets.UTF_8);
+        try (InputStream input = is) {
+            return new String(WorkspaceIO.read(input, WorkspaceIO.MAX_TEXT_BYTES), StandardCharsets.UTF_8);
         } catch (IOException e) {
             e.printStackTrace();
             return "";
         }
     }
     public static File getLocal(String path) {
-        File file1 = new File(path.replace("file:/", ""));
-        File file2 = new File(path.replace("file:/", Environment.getExternalStorageDirectory().getAbsolutePath()));
-        return file2.exists() ? file2 : file1.exists() ? file1 : new File(path);
+        try {
+            File local = WorkspaceFiles.fromLocalUrl(path);
+            if (local != null) return local;
+            if (new File(path).isAbsolute()) return new File(path); // Explicit legacy/media path only.
+            return WorkspaceFiles.resolve(path);
+        } catch (IOException e) { throw new IllegalArgumentException("非法本地路径", e); }
     }
     public static void deleteFile(File file) {
         if (!file.exists()) return;

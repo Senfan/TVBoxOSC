@@ -10,6 +10,7 @@ import android.net.Uri;
 import android.util.Log;
 
 import com.github.tvbox.osc.base.App;
+import com.github.tvbox.osc.util.MediaFileAccess;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -60,6 +61,7 @@ public class ReexPlayer {
         intent.setPackage(packageInfo.packageName);
         intent.setComponent(new ComponentName(packageInfo.packageName, packageInfo.activityName));
         intent.setData(Uri.parse(url));
+        MediaFileAccess.grantRead(intent, Uri.parse(url));
         intent.putExtra("title", title);
         intent.putExtra("name", title);
         intent.putExtra("reex.extra.title", title);
@@ -76,6 +78,7 @@ public class ReexPlayer {
         }
         if (subtitle != null && !subtitle.isEmpty()) {
             intent.putExtra("reex.extra.subtitle", subtitle);
+            MediaFileAccess.grantRead(intent, Uri.parse(subtitle));
         }
         try {
             activity.startActivity(intent);

@@ -24,6 +24,11 @@ find_jar() {
     printf '%s' "$jar"
 }
 
+if [[ -n "${TVBOX_UPDATE_TEST_CLASSPATH:-}" ]]; then
+    classpath="$TVBOX_UPDATE_TEST_CLASSPATH"
+    printf 'Explicit update regression classpath: %s\n' "$classpath"
+else
+# Legacy baseline is retained for comparisons; upgraded runs pass an explicit classpath.
 gson="$(find_jar 'gson-2.10.1.jar')"
 okhttp="$(find_jar 'okhttp-3.12.11.jar')"
 okio="$(find_jar 'okio-jvm-3.3.0.jar')"
@@ -38,11 +43,11 @@ if [[ -z "$kotlin" ]]; then
     exit 1
 fi
 classpath="$gson:$okhttp:$okio:$kotlin"
+printf 'Cached baseline dependencies:\n  %s\n  %s\n  %s\n  %s\n' "$gson" "$okhttp" "$okio" "$kotlin"
+fi
 classes="$temporary/classes"
 mkdir -p "$classes" "$temporary/tls" "$temporary/core" "$temporary/network"
 printf 'Standalone update tests, JDK: %s\n' "$java_home"
-printf 'Cached dependencies:\n  %s\n  %s\n  %s\n  %s\n' "$gson" "$okhttp" "$okio" "$kotlin"
-
 "$javac_bin" --release 17 --add-modules jdk.httpserver -encoding UTF-8 -cp "$classpath" -d "$classes" \
     "$root/app/src/main/java/com/github/tvbox/osc/update/UpdateUrlPolicy.java" \
     "$root/app/src/main/java/com/github/tvbox/osc/update/UpdateArtifact.java" \

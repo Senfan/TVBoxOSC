@@ -841,18 +841,19 @@ public class SourceViewModel extends ViewModel {
             @Override
             public String call() {
                 String result = extend;
-                if (extend.startsWith("http://127.0.0.1")) {
-                    String path = extend.replaceAll("^http.+/file/", FileUtils.getRootPath() + "/");
-                    path = path.replaceAll("localhost/", "/");
-                    result = FileUtils.readFileToString(path, "UTF-8");
-                    result = tryMinifyJson(result);
-                    extendCache.putIfAbsent(key, result);
-                } else if (extend.startsWith("http")) {
-                    result = OkHttpUtil.string(extend, null);
+                try {
+                    java.io.File local = com.github.tvbox.osc.util.WorkspaceFiles.fromLocalUrl(extend);
+                    if (local != null) {
+                        // Local files may be explicitly replaced; do not cache stale path contents.
+                        return tryMinifyJson(com.github.tvbox.osc.util.WorkspaceIO.text(local));
+                    }
+                    result = FileUtils.get(extend);
                     if (!result.isEmpty()) {
                         result = tryMinifyJson(result);
                         extendCache.putIfAbsent(key, result);
                     }
+                } catch (java.io.IOException e) {
+                    return extend;
                 }
                 return result;
             }

@@ -245,6 +245,19 @@
                 android:orientation="horizontal">
 
                 <TextView
+                    android:id="@+id/workspaceImport"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:background="@drawable/button_dialog_main"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:padding="@dimen/vs_10"
+                    android:text="系统导入"
+                    android:textColor="@color/color_FFFFFF"
+                    android:textSize="@dimen/ts_22" />
+
+                <TextView
                     android:id="@+id/storagePermission"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -254,7 +267,7 @@
                     android:focusable="true"
                     android:gravity="center"
                     android:padding="@dimen/vs_10"
-                    android:text="存储权限"
+                    android:text="传统目录（可选）"
                     android:textColor="@color/color_FFFFFF"
                     android:textSize="@dimen/ts_22" />
 

@@ -56,10 +56,16 @@ class DnsRecordCodec {
       if (utf8ByteCount != label.length()) {
         throw new IllegalArgumentException("non-ascii hostname: " + host);
       }
+      if (utf8ByteCount == 0 || utf8ByteCount > 63) {
+        throw new IllegalArgumentException("invalid DNS label: " + host);
+      }
       nameBuf.writeByte((byte) utf8ByteCount);
       nameBuf.writeUtf8(label);
     }
     nameBuf.writeByte(0); // end
+    if (nameBuf.size() > 255) {
+      throw new IllegalArgumentException("hostname too long: " + host);
+    }
 
     nameBuf.copyTo(buf, 0, nameBuf.size());
     buf.writeShort(type);
@@ -109,9 +115,11 @@ class DnsRecordCodec {
       final int length = buf.readShort() & 0xffff;
 
       if (type == TYPE_A || type == TYPE_AAAA) {
-        byte[] bytes = new byte[length];
-        buf.read(bytes);
-        result.add(InetAddress.getByAddress(bytes));
+        if (length != (type == TYPE_A ? 4 : 16)) {
+          throw new IllegalArgumentException("invalid DNS address length: " + length);
+        }
+        byte[] bytes = buf.readByteArray(length);
+        result.add(InetAddress.getByAddress(hostname, bytes));
       } else {
         buf.skip(length);
       }
@@ -121,19 +129,17 @@ class DnsRecordCodec {
   }
 
   private static void skipName(Buffer in) throws EOFException {
-    // 0 - 63 bytes
-    int length = in.readByte();
-
-    if (length < 0) {
-      // compressed name pointer, first two bits are 1
-      // drop second byte of compression offset
-      in.skip(1);
-    } else {
-      while (length > 0) {
-        // skip each part of the domain name
-        in.skip(length);
-        length = in.readByte();
+    while (true) {
+      int length = in.readByte() & 0xff;
+      if (length == 0) return;
+      if ((length & 0xc0) == 0xc0) {
+        in.skip(1); // compressed suffix, including after an uncompressed label
+        return;
       }
+      if ((length & 0xc0) != 0) {
+        throw new IllegalArgumentException("invalid DNS label length");
+      }
+      in.skip(length);
     }
   }
 }

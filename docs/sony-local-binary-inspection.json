@@ -1,0 +1,201 @@
+[
+  {
+    "path": "app/libs/dec-0.1.2.jar",
+    "size": 98115,
+    "sha256": "615c0c3efef990d77831104475fba6a1f7971388691d4bad1471ad84101f6d52",
+    "sourceStatus": "unverified",
+    "latestStatus": "unverified",
+    "embeddedNativeLibraries": [],
+    "licenseEntries": [],
+    "representativeClasses": [
+      "org/brotli/dec/BitReader.class",
+      "org/brotli/dec/BrotliInputStream.class",
+      "org/brotli/dec/BrotliRuntimeException.class",
+      "org/brotli/dec/Context.class",
+      "org/brotli/dec/Decode.class",
+      "org/brotli/dec/Dictionary$DataHolder.class"
+    ]
+  },
+  {
+    "path": "app/libs/lib-decoder-ffmpeg-release.aar",
+    "size": 3178163,
+    "sha256": "bd917fd7662fd4c2edd33a26870a1e2df445ed594e1d6e6e2609f8d632d664c9",
+    "sourceStatus": "unverified",
+    "latestStatus": "unverified",
+    "embeddedNativeLibraries": [
+      "jni/arm64-v8a/libffmpegJNI.so",
+      "jni/armeabi-v7a/libffmpegJNI.so",
+      "jni/x86/libffmpegJNI.so",
+      "jni/x86_64/libffmpegJNI.so"
+    ],
+    "licenseEntries": [],
+    "representativeClasses": []
+  },
+  {
+    "path": "app/libs/thunder.jar",
+    "size": 79211,
+    "sha256": "bb15de396d120075ade896d36cd3274547dd75b35bb43f22358bec3ac1d50387",
+    "sourceStatus": "unverified",
+    "latestStatus": "unverified",
+    "embeddedNativeLibraries": [],
+    "licenseEntries": [],
+    "representativeClasses": [
+      "com/xunlei/downloadlib/_$$Lambda$XLTaskHelper$cu5BQe6A_9_LSecx9_dTW0k1l_8.class",
+      "com/xunlei/downloadlib/BlockingItem.class",
+      "com/xunlei/downloadlib/Daemon$1.class",
+      "com/xunlei/downloadlib/Daemon.class",
+      "com/xunlei/downloadlib/LinuxFileCommand.class",
+      "com/xunlei/downloadlib/MyServiceConnection.class"
+    ]
+  },
+  {
+    "path": "app/libs/xwalk_shared_library-23.53.589.4.aar",
+    "size": 1107430,
+    "sha256": "0e2e6b8795b526dd7d497eecf8070fbe852ba0b8fc5e203fa7d7332325b379d4",
+    "sourceStatus": "unverified",
+    "latestStatus": "unverified",
+    "embeddedNativeLibraries": [],
+    "licenseEntries": [],
+    "representativeClasses": []
+  },
+  {
+    "path": "app/src/main/jniLibs/arm64-v8a/libijkffmpeg.so",
+    "size": 12585416,
+    "sha256": "08d6214494a350518508653cce9b1fbe91f8044247774ed4c5c275ce2502d871",
+    "sourceStatus": "unverified",
+    "latestStatus": "unverified",
+    "elfClass": 64,
+    "elfMachine": 183,
+    "expectedArchitecture": "arm64-v8a"
+  },
+  {
+    "path": "app/src/main/jniLibs/arm64-v8a/libijkplayer.so",
+    "size": 422536,
+    "sha256": "b9b6b297e25a77a52b95f11c5b12383b27cd965f54d4604aae4d31746a3f35fe",
+    "sourceStatus": "unverified",
+    "latestStatus": "unverified",
+    "elfClass": 64,
+    "elfMachine": 183,
+    "expectedArchitecture": "arm64-v8a"
+  },
+  {
+    "path": "app/src/main/jniLibs/arm64-v8a/libijksdl.so",
+    "size": 481352,
+    "sha256": "63da55470f5974e04be5cb3c2b4d96828c8f8b271bd868c98932676d0f35295e",
+    "sourceStatus": "unverified",
+    "latestStatus": "unverified",
+    "elfClass": 64,
+    "elfMachine": 183,
+    "expectedArchitecture": "arm64-v8a"
+  },
+  {
+    "path": "app/src/main/jniLibs/arm64-v8a/libp2p.so",
+    "size": 5288528,
+    "sha256": "e186f1a81531e21fd05157174afc66624fd530f27dcf4dcf3281ba1c379c10f8",
+    "sourceStatus": "unverified",
+    "latestStatus": "unverified",
+    "elfClass": 64,
+    "elfMachine": 183,
+    "expectedArchitecture": "arm64-v8a"
+  },
+  {
+    "path": "app/src/main/jniLibs/arm64-v8a/libxl_stat.so",
+    "size": 837976,
+    "sha256": "a962c80fcd30469255a6ba3ad6470f79b3681db99d353df507e8e62f6ea394bd",
+    "sourceStatus": "unverified",
+    "latestStatus": "unverified",
+    "elfClass": 64,
+    "elfMachine": 183,
+    "expectedArchitecture": "arm64-v8a"
+  },
+  {
+    "path": "app/src/main/jniLibs/arm64-v8a/libxl_thunder_sdk.so",
+    "size": 5607344,
+    "sha256": "52232f48e6511c1a3bc1c23929f87401553419ad5a7864d2d47db04d26834b55",
+    "sourceStatus": "unverified",
+    "latestStatus": "unverified",
+    "elfClass": 64,
+    "elfMachine": 183,
+    "expectedArchitecture": "arm64-v8a"
+  },
+  {
+    "path": "app/src/main/jniLibs/armeabi-v7a/libijkffmpeg.so",
+    "size": 9953036,
+    "sha256": "e4322e9533b012862a3a36f77a741f558995ba1f5b85fbb9c947186c1249ef20",
+    "sourceStatus": "unverified",
+    "latestStatus": "unverified",
+    "elfClass": 32,
+    "elfMachine": 40,
+    "expectedArchitecture": "armeabi-v7a"
+  },
+  {
+    "path": "app/src/main/jniLibs/armeabi-v7a/libijkplayer.so",
+    "size": 297948,
+    "sha256": "f23e001eb4f8e8fbf06add60565ba46dbd90495fc8cf6d8970e4994c635933ce",
+    "sourceStatus": "unverified",
+    "latestStatus": "unverified",
+    "elfClass": 32,
+    "elfMachine": 40,
+    "expectedArchitecture": "armeabi-v7a"
+  },
+  {
+    "path": "app/src/main/jniLibs/armeabi-v7a/libijksdl.so",
+    "size": 218836,
+    "sha256": "25ca6b1a7894b53b74c53ea94b5502d251973d872f7461c26ccf1d21a0ba4c82",
+    "sourceStatus": "unverified",
+    "latestStatus": "unverified",
+    "elfClass": 32,
+    "elfMachine": 40,
+    "expectedArchitecture": "armeabi-v7a"
+  },
+  {
+    "path": "app/src/main/jniLibs/armeabi-v7a/libp2p.so",
+    "size": 3800812,
+    "sha256": "20aa5065d21d6e26dcbd1690bbe40e789daf7b7224208cf61644ef52f9e739e6",
+    "sourceStatus": "unverified",
+    "latestStatus": "unverified",
+    "elfClass": 32,
+    "elfMachine": 40,
+    "expectedArchitecture": "armeabi-v7a"
+  },
+  {
+    "path": "app/src/main/jniLibs/armeabi-v7a/libxl_stat.so",
+    "size": 501528,
+    "sha256": "52093068e0ed5651d8565fb2f560de35d72cf73071319cf0d411be55b6983eba",
+    "sourceStatus": "unverified",
+    "latestStatus": "unverified",
+    "elfClass": 32,
+    "elfMachine": 40,
+    "expectedArchitecture": "armeabi-v7a"
+  },
+  {
+    "path": "app/src/main/jniLibs/armeabi-v7a/libxl_thunder_sdk.so",
+    "size": 3680664,
+    "sha256": "2c202ae36003c2ceaba85bba6560d98f6a56c1559c50cc72d6e3499f9495294a",
+    "sourceStatus": "unverified",
+    "latestStatus": "unverified",
+    "elfClass": 32,
+    "elfMachine": 40,
+    "expectedArchitecture": "armeabi-v7a"
+  },
+  {
+    "path": "quickjs/src/main/jniLibs/arm64-v8a/libquickjs-android-wrapper.so",
+    "size": 1232192,
+    "sha256": "bc864c8bf84430ba0b7c217f2430be515432baf81e4a59eb83be174541d2bde9",
+    "sourceStatus": "unverified",
+    "latestStatus": "unverified",
+    "elfClass": 64,
+    "elfMachine": 183,
+    "expectedArchitecture": "arm64-v8a"
+  },
+  {
+    "path": "quickjs/src/main/jniLibs/armeabi-v7a/libquickjs-android-wrapper.so",
+    "size": 825780,
+    "sha256": "9e4c9373189b8410c87e475cb15948cce89cb211fc6e2fa4c057693570009dd7",
+    "sourceStatus": "unverified",
+    "latestStatus": "unverified",
+    "elfClass": 32,
+    "elfMachine": 40,
+    "expectedArchitecture": "armeabi-v7a"
+  }
+]

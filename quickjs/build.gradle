@@ -3,7 +3,9 @@ plugins {
 }
 
 android {
-    compileSdk 34
+    namespace 'com.whl.quickjs.android'
+    compileSdk 37
+    enableKotlin = false
 
     defaultConfig {
         minSdk 21

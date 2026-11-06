@@ -1,0 +1,52 @@
+[
+  {
+    "group": "com.aliyun.sdk.android",
+    "artifact": "AliyunPlayer",
+    "candidate": "7.16.0-full",
+    "status": "inspected",
+    "url": "https://maven.aliyun.com/repository/releases/com/aliyun/sdk/android/AliyunPlayer/7.16.0-full/AliyunPlayer-7.16.0-full.aar",
+    "sha256": "e9d834b7bb065b194add4c7862585a750ee857ad9f43ef8125b43ac61085d603",
+    "sizeBytes": 9581257,
+    "minSdk": "18",
+    "nativeAbis": [
+      "arm64-v8a",
+      "armeabi-v7a"
+    ],
+    "aarMetadata": "aarFormatVersion=1.0\naarMetadataVersion=1.0\n",
+    "downloadPath": "aar-ft6syizh/candidate.aar",
+    "recheckNote": "Re-read local archive and verified SHA256, manifest minSdk and JNI entries; no code executed."
+  },
+  {
+    "group": "com.github.anilbeesetti.nextlib",
+    "artifact": "nextlib-media3ext",
+    "candidate": "0.8.4",
+    "status": "inspected",
+    "url": "https://jitpack.io/com/github/anilbeesetti/nextlib/nextlib-media3ext/0.8.4/nextlib-media3ext-0.8.4.aar",
+    "sha256": "2b8816e3aee8cb573838a50ea80e75d82bd232a42b2b6b082ce157af66ae0b74",
+    "sizeBytes": 10392702,
+    "minSdk": "21",
+    "nativeAbis": [
+      "arm64-v8a",
+      "armeabi-v7a",
+      "x86",
+      "x86_64"
+    ],
+    "aarMetadata": "aarFormatVersion=1.0\naarMetadataVersion=1.0\nminCompileSdk=1\nminCompileSdkExtension=0\nminAndroidGradlePluginVersion=1.0.0\ncoreLibraryDesugaringEnabled=false\n",
+    "downloadPath": "aar-suc_wccc/candidate.aar",
+    "recheckNote": "Re-read local archive and verified SHA256, manifest minSdk and JNI entries; no code executed."
+  },
+  {
+    "group": "com.google.android.material",
+    "artifact": "material",
+    "candidate": "1.14.0",
+    "status": "inspected",
+    "url": "https://dl.google.com/dl/android/maven2/com/google/android/material/material/1.14.0/material-1.14.0.aar",
+    "sha256": "19e8fab43df6870f8e4322059624384be0279da56dc910529ff591dc674008cd",
+    "sizeBytes": 2741429,
+    "minSdk": "23",
+    "nativeAbis": [],
+    "aarMetadata": "aarFormatVersion=1.0\naarMetadataVersion=1.0\nminCompileSdk=1\nminCompileSdkExtension=0\nminAndroidGradlePluginVersion=1.0.0\ncoreLibraryDesugaringEnabled=false\n",
+    "downloadPath": "aar-3w3uz7z6/candidate.aar",
+    "recheckNote": "Re-read local archive and verified SHA256, manifest minSdk and JNI entries; no code executed."
+  }
+]

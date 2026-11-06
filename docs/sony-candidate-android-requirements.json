@@ -1,0 +1,154 @@
+[
+  {
+    "group": "androidx.appcompat",
+    "artifact": "appcompat",
+    "candidate": "1.8.0",
+    "status": "inspected",
+    "url": "https://dl.google.com/dl/android/maven2/androidx/appcompat/appcompat/1.8.0/appcompat-1.8.0.aar",
+    "sha256": "773f79306eb0ca2447af8752e923ce6269e201e7fe6b275cc76e2998ee87e838",
+    "sizeBytes": 1197540,
+    "minSdk": "23",
+    "nativeAbis": [],
+    "aarMetadata": "aarFormatVersion=1.0\naarMetadataVersion=1.0\nminCompileSdk=34\nminCompileSdkExtension=0\nminAndroidGradlePluginVersion=8.1.1\ncoreLibraryDesugaringEnabled=false\n",
+    "downloadPath": "aar-f_h60cto/candidate.aar"
+  },
+  {
+    "group": "androidx.constraintlayout",
+    "artifact": "constraintlayout",
+    "candidate": "2.2.2",
+    "status": "inspected",
+    "url": "https://dl.google.com/dl/android/maven2/androidx/constraintlayout/constraintlayout/2.2.2/constraintlayout-2.2.2.aar",
+    "sha256": "0393b0bf7b11057e13b5330e862afb453cd31eba25c8309b6d2a7d345ca7be69",
+    "sizeBytes": 507990,
+    "minSdk": "21",
+    "nativeAbis": [],
+    "aarMetadata": "aarFormatVersion=1.0\naarMetadataVersion=1.0\nminCompileSdk=34\nminCompileSdkExtension=0\nminAndroidGradlePluginVersion=1.0.0\ncoreLibraryDesugaringEnabled=false\n",
+    "downloadPath": "aar-cw0s2pzg/candidate.aar"
+  },
+  {
+    "group": "androidx.media3",
+    "artifact": "media3-exoplayer",
+    "candidate": "1.11.1",
+    "status": "inspected",
+    "url": "https://dl.google.com/dl/android/maven2/androidx/media3/media3-exoplayer/1.11.1/media3-exoplayer-1.11.1.aar",
+    "sha256": "588592baec110837c33ce0c82bb76464203e6b0621177bbe5d88779001a6f1ed",
+    "sizeBytes": 1703377,
+    "minSdk": "23",
+    "nativeAbis": [],
+    "aarMetadata": "aarFormatVersion=1.0\naarMetadataVersion=1.0\nminCompileSdk=36\nminCompileSdkExtension=0\nminAndroidGradlePluginVersion=1.0.0\ncoreLibraryDesugaringEnabled=false\n",
+    "downloadPath": "aar-zseugvc1/candidate.aar"
+  },
+  {
+    "group": "androidx.recyclerview",
+    "artifact": "recyclerview",
+    "candidate": "1.4.0",
+    "status": "inspected",
+    "url": "https://dl.google.com/dl/android/maven2/androidx/recyclerview/recyclerview/1.4.0/recyclerview-1.4.0.aar",
+    "sha256": "0f32ccaffcda74c3f87f0b4cfe6ae78e8aa4eb3ad7dda4f2edf06eedc947a5cf",
+    "sizeBytes": 452493,
+    "minSdk": "21",
+    "nativeAbis": [],
+    "aarMetadata": "aarFormatVersion=1.0\naarMetadataVersion=1.0\nminCompileSdk=35\nminCompileSdkExtension=0\nminAndroidGradlePluginVersion=1.0.0\ncoreLibraryDesugaringEnabled=false\n",
+    "downloadPath": "aar-39vt87ee/candidate.aar"
+  },
+  {
+    "group": "androidx.room",
+    "artifact": "room-runtime",
+    "candidate": "2.8.5",
+    "status": "inspected",
+    "url": "https://dl.google.com/dl/android/maven2/androidx/room/room-runtime/2.8.5/room-runtime-2.8.5.aar",
+    "sha256": "5bdd0e2af35a30412d0ab89ba6bd521b6fb91d8fcb072ac27d0e4fa625bfcc95",
+    "sizeBytes": 4503,
+    "minSdk": "23",
+    "nativeAbis": [],
+    "downloadPath": "aar-3p82ojbh/candidate.aar"
+  },
+  {
+    "group": "com.alivc.conan",
+    "artifact": "AlivcConan",
+    "candidate": "1.0.5",
+    "status": "inspected",
+    "url": "https://maven.aliyun.com/repository/releases/com/alivc/conan/AlivcConan/1.0.5/AlivcConan-1.0.5.aar",
+    "sha256": "4e46edd4ce98a0f491507f5f24173fa8d2deae25f364859e5244f66a6c314a60",
+    "sizeBytes": 895727,
+    "minSdk": "14",
+    "nativeAbis": [
+      "arm64-v8a",
+      "armeabi-v7a"
+    ],
+    "downloadPath": "aar-gesyvbse/candidate.aar"
+  },
+  {
+    "group": "com.aliyun.sdk.android",
+    "artifact": "AliyunPlayer",
+    "candidate": "7.19.0-part",
+    "status": "inspected",
+    "url": "https://maven.aliyun.com/repository/releases/com/aliyun/sdk/android/AliyunPlayer/7.19.0-part/AliyunPlayer-7.19.0-part.aar",
+    "sha256": "b7c29d2ac13a337b3866135ec93b6cb7a94dde944f094ad38096d95af7d4910a",
+    "sizeBytes": 7288618,
+    "minSdk": "18",
+    "nativeAbis": [
+      "arm64-v8a",
+      "armeabi-v7a"
+    ],
+    "aarMetadata": "aarFormatVersion=1.0\naarMetadataVersion=1.0\n",
+    "downloadPath": "aar-jsk94u6w/candidate.aar"
+  },
+  {
+    "group": "com.github.bumptech.glide",
+    "artifact": "glide",
+    "candidate": "5.0.9",
+    "status": "inspected",
+    "url": "https://repo.maven.apache.org/maven2/com/github/bumptech/glide/glide/5.0.9/glide-5.0.9.aar",
+    "sha256": "9edc536d282c23bd9bcbdbd139da3c742ee2c422b99a3943b335664f64080043",
+    "sizeBytes": 718099,
+    "minSdk": "23",
+    "nativeAbis": [],
+    "aarMetadata": "aarFormatVersion=1.0\naarMetadataVersion=1.0\nminCompileSdk=37\nminCompileMinorSdk=0\nminCompileSdkExtension=0\nminAndroidGradlePluginVersion=1.0.0\ncoreLibraryDesugaringEnabled=false\n",
+    "downloadPath": "aar-dz7bolxj/candidate.aar"
+  },
+  {
+    "group": "com.github.getActivity",
+    "artifact": "XXPermissions",
+    "candidate": "28.3",
+    "status": "inspected",
+    "url": "https://jitpack.io/com/github/getActivity/XXPermissions/28.3/XXPermissions-28.3.aar",
+    "sha256": "52e16a4307ad53de9ff88214092c296f273603b8a3fd7e50ca6625d008e64ece",
+    "sizeBytes": 206214,
+    "minSdk": "17",
+    "nativeAbis": [],
+    "aarMetadata": "aarFormatVersion=1.0\naarMetadataVersion=1.0\nminCompileSdk=1\nminCompileSdkExtension=0\nminAndroidGradlePluginVersion=1.0.0\ncoreLibraryDesugaringEnabled=false\n",
+    "downloadPath": "aar-ej0_g0rw/candidate.aar"
+  },
+  {
+    "group": "com.github.thegrizzlylabs",
+    "artifact": "sardine-android",
+    "candidate": "v0.9",
+    "status": "inspected",
+    "url": "https://jitpack.io/com/github/thegrizzlylabs/sardine-android/v0.9/sardine-android-v0.9.aar",
+    "sha256": "6501973e47061e5de4a24d222fb1b459dd26ad3e02631afa06ecda45b7fd2dde",
+    "sizeBytes": 85329,
+    "minSdk": "15",
+    "nativeAbis": [],
+    "aarMetadata": "aarFormatVersion=1.0\naarMetadataVersion=1.0\nminCompileSdk=1\nminCompileSdkExtension=0\nminAndroidGradlePluginVersion=1.0.0\ncoreLibraryDesugaringEnabled=false\n",
+    "downloadPath": "aar-xoqonzhw/candidate.aar"
+  },
+  {
+    "group": "org.conscrypt",
+    "artifact": "conscrypt-android",
+    "candidate": "2.9.0",
+    "status": "inspected",
+    "url": "https://repo.maven.apache.org/maven2/org/conscrypt/conscrypt-android/2.9.0/conscrypt-android-2.9.0.aar",
+    "sha256": "53ee06fc093b6f085c7f81da77f622823e65489cf1bdc64a87230a23603d7773",
+    "sizeBytes": 5003083,
+    "minSdk": "21",
+    "nativeAbis": [
+      "arm64-v8a",
+      "armeabi-v7a",
+      "x86",
+      "x86_64"
+    ],
+    "aarMetadata": "aarFormatVersion=1.0\naarMetadataVersion=1.0\nminCompileSdk=1\nminCompileSdkExtension=0\nminAndroidGradlePluginVersion=1.0.0\n",
+    "downloadPath": "aar-qgu31z7l/candidate.aar"
+  }
+]

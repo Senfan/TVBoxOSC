@@ -6,19 +6,26 @@ import android.widget.Toast;
 
 import org.xwalk.core.XWalkInitializer;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.Enumeration;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
+import java.util.zip.CRC32;
+import java.util.zip.CheckedInputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 public class XWalkUtils {
 
     private static XWalkInitializer xWalkInitializer = null;
+    private static final String[] LIB_FILES = {"classes.dex", "icudtl.dat", "libxwalkcore.so",
+            "xwalk.pak", "xwalk_100_percent.pak"};
 
     public interface XWalkState {
         void success();
@@ -38,25 +45,35 @@ public class XWalkUtils {
         return String.format("crosswalk-apks-23.53.589.4-%s.zip", getRuntimeAbi());
     }
 
-    public static boolean xWalkLibExist(Context context) {
-        String[] libFiles = new String[]{
-                "classes.dex",
-                "icudtl.dat",
-                "libxwalkcore.so",
-                "xwalk.pak",
-                "xwalk_100_percent.pak"
-        };
-        String dir = libExtractPath(context);
-        for (String lib : libFiles) {
-            if (!new File(dir + "/" + lib).exists())
-                return false;
+    public static synchronized boolean xWalkLibExist(Context context) {
+        File prepared = null;
+        try {
+            File dir = new File(libExtractPath(context));
+            if (!runtimeFilesExist(dir)) return false;
+            File dex = new File(dir, "classes.dex");
+            requireDex(dex);
+            if (!DynamicCodeFiles.isReadOnlyRegularFile(dex)) {
+                // Migrate legacy extracted DEX by copying, never by chmod after its original write.
+                prepared = DynamicCodeFiles.prepareForLoading(dex, dir, "xwalk-dex", ".dex", null);
+                DynamicCodeFiles.replacePreservingPrevious(prepared, dex);
+            }
+            return DynamicCodeFiles.isReadOnlyRegularFile(dex);
+        } catch (Throwable e) {
+            LOG.e("XWalk动态代码安全检查失败，拒绝加载: " + e.getMessage());
+            return false;
+        } finally {
+            if (prepared != null && prepared.exists()) prepared.delete();
         }
-        return true;
     }
 
-    public static void tryUseXWalk(Context context, XWalkState state) {
+    public static synchronized void tryUseXWalk(Context context, XWalkState state) {
         if (!xWalkLibExist(context)) {
-            state.ignore();
+            if (new File(libExtractPath(context), "classes.dex").exists()) {
+                LOG.e("XWalk组件不完整或DEX不能安全只读加载");
+                state.fail();
+            } else {
+                state.ignore();
+            }
             return;
         }
         if (xWalkInitializer == null) {
@@ -117,47 +134,35 @@ public class XWalkUtils {
         return new File(apkPath(context)).exists();
     }
 
-    public static void unzipXWalkZip(Context context, String archive) throws Throwable {
-        BufferedInputStream bi;
-        ZipFile zf = new ZipFile(archive);
-        Enumeration e = zf.entries();
-        while (e.hasMoreElements()) {
-            ZipEntry ze2 = (ZipEntry) e.nextElement();
-            String entryName = ze2.getName();
-            if (ze2.isDirectory()) {
-                continue;
-            } else {
-                String fileName = entryName.substring(entryName.lastIndexOf("/") + 1, entryName.length());
-                if (fileName.equals("XWalkRuntimeLib.apk")) {
-                    String tempFile = apkPath(context) + ".tmp";
-                    String finalApk = apkPath(context);
-                    File f = new File(tempFile);
-                    if (f.exists())
-                        f.delete();
-                    f = new File(finalApk);
-                    if (f.exists())
-                        f.delete();
-                    BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(tempFile));
-                    bi = new BufferedInputStream(zf.getInputStream(ze2));
-                    byte[] readContent = new byte[1024];
-                    int readCount = bi.read(readContent);
-                    while (readCount != -1) {
-                        bos.write(readContent, 0, readCount);
-                        readCount = bi.read(readContent);
-                    }
-                    bos.flush();
-                    bos.close();
-                    if (new File(tempFile).renameTo(new File(finalApk))) {
-                        LOG.i(finalApk);
-                    }
+    public static synchronized void unzipXWalkZip(Context context, String archive) throws Throwable {
+        File candidate = null;
+        try (ZipFile zf = new ZipFile(archive)) {
+            ZipEntry runtime = null;
+            Enumeration<? extends ZipEntry> entries = zf.entries();
+            while (entries.hasMoreElements()) {
+                ZipEntry entry = entries.nextElement();
+                String name = entry.getName();
+                if (!entry.isDirectory() && name.substring(name.lastIndexOf("/") + 1).equals("XWalkRuntimeLib.apk")) {
+                    if (runtime != null) throw new IOException("XWalk压缩包包含重复运行组件");
+                    runtime = entry;
                 }
             }
+            if (runtime == null) throw new IOException("XWalk压缩包缺少运行组件");
+            CRC32 crc = new CRC32();
+            try (InputStream input = new CheckedInputStream(zf.getInputStream(runtime), crc)) {
+                candidate = DynamicCodeFiles.writeReadOnly(input, runtime.getSize(), context.getCacheDir(),
+                        "xwalk-apk", ".apk", null);
+            }
+            if (runtime.getCrc() == -1 || crc.getValue() != runtime.getCrc()) {
+                throw new IOException("XWalk运行组件CRC校验失败");
+            }
+            validateRuntimeApk(candidate);
+            DynamicCodeFiles.replacePreservingPrevious(candidate, new File(apkPath(context)));
+            LOG.i(apkPath(context));
+        } finally {
+            if (candidate != null && candidate.exists()) candidate.delete();
         }
-        zf.close();
-        File zipFile = new File(archive);
-        if (zipFile.exists() && zipFile.getName().endsWith(".zip")) {
-            zipFile.delete();
-        }
+        // The caller owns the downloaded ZIP; do not delete unrelated archives or old components.
     }
 
     public static String getRuntimeAbi() {
@@ -186,16 +191,129 @@ public class XWalkUtils {
         return result;
     }
 
-    public static boolean extractXWalkLib(Context context) throws Throwable {
-        Class cls = Class.forName("org.xwalk.core.XWalkDecompressor");
-        Method method = cls.getMethod("extractResource", String.class, String.class);
-        boolean obj = (boolean) method.invoke(null, apkPath(context), libExtractPath(context));
-        if (obj) {
+    public static synchronized boolean extractXWalkLib(Context context) throws Throwable {
+        File apk = null;
+        File preparedDex = null;
+        File stage = null;
+        boolean published = false;
+        try {
+            File target = new File(libExtractPath(context));
+            if (!independentPath(target)) throw new IOException("XWalk解压目录不是独立私有目录");
+            target = target.getCanonicalFile();
+            File parent = target.getParentFile();
+            if (parent == null) throw new IOException("XWalk解压目录无效");
+            stage = new File(parent, "xwalk-stage-" + UUID.randomUUID());
+            if (!stage.mkdir()) throw new IOException("无法创建XWalk私有暂存目录");
+            apk = DynamicCodeFiles.prepareForLoading(new File(apkPath(context)),
+                    context.getDir("dynamic_xwalk", Context.MODE_PRIVATE), "xwalk-apk", ".apk", null);
+            validateRuntimeApk(apk);
+            Class cls = Class.forName("org.xwalk.core.XWalkDecompressor");
+            Method method = cls.getMethod("extractResource", String.class, String.class);
+            if (!(boolean) method.invoke(null, apk.getAbsolutePath(), stage.getAbsolutePath()) || !runtimeFilesExist(stage)) {
+                throw new IOException("XWalk资源解压失败，保留旧组件");
+            }
+            File dex = new File(stage, "classes.dex");
+            requireDex(dex);
+            // Bundled XWalk writes a writable DEX. Copy the ACTUAL extracted DEX using the FD-first
+            // sequence before publishing the fixed classes.dex path used by findDownloadedCore.
+            preparedDex = DynamicCodeFiles.prepareForLoading(dex, stage, "xwalk-dex", ".dex", null);
+            requireDex(preparedDex);
+            verifyExtractedDex(apk, preparedDex);
+            if (!dex.delete() || !preparedDex.renameTo(dex) || !DynamicCodeFiles.isReadOnlyRegularFile(dex)) {
+                throw new IOException("XWalk DEX无法安全只读发布，拒绝加载");
+            }
+            File previous = new File(parent, target.getName() + ".previous-" + UUID.randomUUID());
+            if (!target.renameTo(previous)) throw new IOException("无法保留旧XWalk组件");
+            try {
+                published = stage.renameTo(target);
+                if (!published) throw new IOException("XWalk发布失败，回退旧组件");
+            } finally {
+                if (!published && !previous.renameTo(target)) {
+                    throw new IOException("XWalk发布与回退失败，旧组件位于 " + previous);
+                }
+            }
             Toast.makeText(context, "解压XWalkView运行组件完成!", Toast.LENGTH_LONG).show();
-        } else {
-            Toast.makeText(context, "解压XWalkView运行组件失败!", Toast.LENGTH_LONG).show();
+            return true;
+        } catch (Throwable e) {
+            LOG.e("XWalk动态代码安全处理失败: " + e.getMessage());
+            Toast.makeText(context, "XWalk组件不能安全只读加载，已停止", Toast.LENGTH_LONG).show();
+            throw e;
+        } finally {
+            if (apk != null) apk.delete();
+            if (!published && stage != null) {
+                if (preparedDex != null) preparedDex.delete();
+                for (String name : LIB_FILES) new File(stage, name).delete();
+                stage.delete(); // Never recursively delete unknown files.
+            }
         }
-        return obj;
+    }
+
+    private static boolean runtimeFilesExist(File dir) throws IOException {
+        if (!independentPath(dir)) return false;
+        for (String name : LIB_FILES) {
+            File file = new File(dir, name);
+            if (!file.isFile() || file.length() == 0 || file.length() > DynamicCodeFiles.MAX_CODE_BYTES
+                    || !independentPath(file)) return false;
+        }
+        return true;
+    }
+
+    private static boolean independentPath(File file) throws IOException {
+        File absolute = file.getAbsoluteFile();
+        File parent = absolute.getParentFile();
+        return parent != null && new File(parent.getCanonicalFile(), absolute.getName()).equals(file.getCanonicalFile());
+    }
+
+    private static void verifyExtractedDex(File apk, File dex) throws IOException {
+        try (ZipFile zip = new ZipFile(apk)) {
+            ZipEntry entry = zip.getEntry("classes.dex");
+            CRC32 crc = new CRC32();
+            try (InputStream input = new CheckedInputStream(new FileInputStream(dex), crc)) {
+                byte[] buffer = new byte[16 * 1024];
+                long count = 0;
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    count += read;
+                    if (count > DynamicCodeFiles.MAX_CODE_BYTES) throw new IOException("XWalk DEX超过大小上限");
+                }
+                if (entry == null || count != entry.getSize() || crc.getValue() != entry.getCrc()) {
+                    throw new IOException("XWalk实际解出的DEX长度或CRC校验失败");
+                }
+            }
+        }
+    }
+
+    private static void requireDex(File dex) throws IOException {
+        if (dex.length() < 8 || dex.length() > DynamicCodeFiles.MAX_CODE_BYTES) throw new IOException("XWalk DEX大小无效");
+        try (FileInputStream input = new FileInputStream(dex)) {
+            byte[] magic = new byte[8];
+            if (input.read(magic) != magic.length || magic[0] != 'd' || magic[1] != 'e' || magic[2] != 'x'
+                    || magic[3] != '\n' || magic[7] != 0) throw new IOException("XWalk缺少可用的原始DEX");
+            for (int i = 4; i < 7; i++) {
+                if (magic[i] < '0' || magic[i] > '9') throw new IOException("XWalk DEX版本无效");
+            }
+        }
+    }
+
+    private static void validateRuntimeApk(File apk) throws IOException {
+        // ZIP structure/size/CRC and DEX magic checks are integrity checks, not publisher authentication.
+        try (ZipFile zip = new ZipFile(apk)) {
+            Set<String> names = new HashSet<>();
+            long total = 0;
+            Enumeration<? extends ZipEntry> entries = zip.entries();
+            while (entries.hasMoreElements()) {
+                ZipEntry entry = entries.nextElement();
+                if (!names.add(entry.getName())) throw new IOException("XWalk APK包含重复资源");
+                if (entry.isDirectory()) continue;
+                long size = entry.getSize();
+                if (size < 0 || size > DynamicCodeFiles.MAX_CODE_BYTES || size > 2 * DynamicCodeFiles.MAX_CODE_BYTES - total) {
+                    throw new IOException("XWalk APK资源超过安全大小上限");
+                }
+                total += size;
+            }
+            ZipEntry dex = zip.getEntry("classes.dex");
+            if (dex == null || dex.getSize() < 8) throw new IOException("XWalk APK缺少可合规加载的classes.dex");
+        }
     }
 
     static String apkPath(Context context) {

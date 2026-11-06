@@ -27,6 +27,12 @@ import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.M3U8;
 import com.github.tvbox.osc.util.MD5;
 import com.github.tvbox.osc.util.FileUtils;
+import com.github.tvbox.osc.util.WorkspaceFiles;
+import com.github.tvbox.osc.util.WorkspaceIO;
+import com.github.tvbox.osc.util.DynamicCodeFiles;
+import com.google.gson.JsonPrimitive;
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import com.github.tvbox.osc.util.VideoParseRuler;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
@@ -75,7 +81,7 @@ public class ApiConfig {
     public JsonArray livePlayHeaders;
     private final SourceBean emptyHome = new SourceBean();
 
-    private final JarLoader jarLoader = new JarLoader();
+    private volatile JarLoader jarLoader = new JarLoader();
     private final JsLoader jsLoader = new JsLoader();
     private final IPyLoader pyLoader =  new pyLoader();
     private final String userAgent = "okhttp/3.15";
@@ -154,26 +160,17 @@ public class ApiConfig {
                 th.printStackTrace();
             }
         }
-        String TempKey = null, configUrl = "", pk = ";pk;";
-        if (apiUrl.contains(pk)) {
-            String[] a = apiUrl.split(pk);
-            TempKey = a[1];
-            if (apiUrl.startsWith("clan")) {
-                configUrl = clanToAddress(a[0]);
-            } else if (apiUrl.startsWith("http")) {
-                configUrl = a[0];
-            } else {
-                configUrl = "http://" + a[0];
-            }
-        } else if (apiUrl.startsWith("clan")) {
-            configUrl = clanToAddress(apiUrl);
-        } else if (!apiUrl.startsWith("http")) {
-            configUrl = "http://" + configUrl;
-        } else {
-            configUrl = apiUrl;
+        String[] parts = apiUrl.split(";pk;", 2);
+        final String configKey = parts.length > 1 ? parts[1] : null;
+        final String configUrl;
+        try {
+            String converted = WorkspaceFiles.toHttp(parts[0]);
+            configUrl = converted.startsWith("http://") || converted.startsWith("https://")
+                    ? converted : "http://" + converted;
+        } catch (IOException e) {
+            callback.error("本地配置路径无效，请导入配置目录或ZIP（原文件不会删除）");
+            return;
         }
-        System.out.println("API URL :" + configUrl);
-        String configKey = TempKey;
         OkGo.<String>get(configUrl)
                 .headers("User-Agent", userAgent)
                 .headers("Accept", requestAccept)
@@ -184,15 +181,8 @@ public class ApiConfig {
                             String json = response.body();
                             parseJson(apiUrl, json);
                             try {
-                                File cacheDir = cache.getParentFile();
-                                if (!cacheDir.exists())
-                                    cacheDir.mkdirs();
-                                if (cache.exists())
-                                    cache.delete();
-                                FileOutputStream fos = new FileOutputStream(cache);
-                                fos.write(json.getBytes("UTF-8"));
-                                fos.flush();
-                                fos.close();
+                                WorkspaceIO.writeAtomic(new ByteArrayInputStream(json.getBytes(StandardCharsets.UTF_8)),
+                                        cache, WorkspaceIO.MAX_TEXT_BYTES);
                             } catch (Throwable th) {
                                 th.printStackTrace();
                             }
@@ -219,128 +209,98 @@ public class ApiConfig {
                     }
 
                     public String convertResponse(okhttp3.Response response) throws Throwable {
-                        String result = "";
-                        if (response.body() == null) {
-                            result = "";
-                        } else {
-                            result = FindResult(response.body().string(), configKey);
+                        try (okhttp3.ResponseBody body = response.body()) {
+                            if (!response.isSuccessful() || body == null) throw new IOException("配置下载失败");
+                            String result = FindResult(new String(WorkspaceIO.read(body.byteStream(), WorkspaceIO.MAX_TEXT_BYTES),
+                                    StandardCharsets.UTF_8), configKey);
+                            return fixContentPath(configUrl, result);
                         }
-                        if (apiUrl.startsWith("clan")) {
-                            result = clanContentFix(clanToAddress(apiUrl), result);
-                        }
-                        result = fixContentPath(apiUrl, result);
-                        return result;
                     }
                 });
     }
 
     public void loadJar(boolean useCache, String spider, LoadConfigCallback callback) {
-        String[] urls = spider.split(";md5;");
+        String[] urls = spider.split(";md5;", 2);
         String jarUrl = urls[0];
         String md5 = urls.length > 1 ? urls[1].trim() : "";
-        File cache = new File(App.getInstance().getFilesDir().getAbsolutePath() + "/csp/"+MD5.string2MD5(jarUrl)+".jar");
-        if (!md5.isEmpty() || useCache) {
-            if (cache.exists() && (useCache || MD5.getFileMd5(cache).equalsIgnoreCase(md5))) {
-                if (jarLoader.load(cache.getAbsolutePath())) {
-                    callback.success();
-                } else {
-                    callback.error("从缓存加载jar失败");
-                }
-                return;
-            }
-        }else {
-            if (Boolean.parseBoolean(jarCache) && cache.exists() && !FileUtils.isWeekAgo(cache)) {
-                if (jarLoader.load(cache.getAbsolutePath())) {
-                    callback.success();
-                    return;
-                }
-            }
+        File cache = new File(App.getInstance().getFilesDir(), "csp/" + MD5.string2MD5(jarUrl) + ".jar");
+        if ((useCache || !md5.isEmpty() || (Boolean.parseBoolean(jarCache) && !FileUtils.isWeekAgo(cache)))
+                && loadCachedJar(cache, md5)) {
+            callback.success();
+            return;
         }
-
-        boolean isJarInImg = jarUrl.startsWith("img+");
-        jarUrl = jarUrl.replace("img+", "");
-        OkGo.<File>get(jarUrl)
+        boolean image = jarUrl.startsWith("img+");
+        final String download;
+        try {
+            download = WorkspaceFiles.toHttp(image ? jarUrl.substring(4) : jarUrl);
+        } catch (IOException e) {
+            callback.error("JAR地址无效");
+            return;
+        }
+        OkGo.<File>get(download)
                 .headers("User-Agent", userAgent)
                 .headers("Accept", requestAccept)
                 .execute(new AbsCallback<File>() {
-
                     @Override
-                    public File convertResponse(okhttp3.Response response){
-                        File cacheDir = cache.getParentFile();
-                        assert cacheDir != null;
-                        if (!cacheDir.exists()) cacheDir.mkdirs();
-                        if (cache.exists()) cache.delete();
-                        // 3. 使用 try-with-resources 确保流关闭
-                        assert response.body() != null;
-                        try (FileOutputStream fos = new FileOutputStream(cache)) {
-                            if (isJarInImg) {
-                                String respData = response.body().string();
-                                LOG.i("echo---jar Response: " + respData);
-                                byte[] imgJar = getImgJar(respData);
-                                if (imgJar == null || imgJar.length == 0) {
-                                    LOG.e("echo---Generated JAR data is empty");
-                                    callback.error("JAR data is empty");
-                                }
-                                fos.write(imgJar);
-                            } else {
-                                // 使用流式传输避免内存溢出
-                                InputStream inputStream = response.body().byteStream();
-                                byte[] buffer = new byte[4096];
-                                int bytesRead;
-                                while ((bytesRead = inputStream.read(buffer)) != -1) {
-                                    fos.write(buffer, 0, bytesRead);
-                                }
+                    public File convertResponse(okhttp3.Response response) throws Throwable {
+                        try (okhttp3.ResponseBody body = response.body()) {
+                            if (!response.isSuccessful() || body == null) throw new IOException("JAR下载失败");
+                            if (image) {
+                                String encoded = new String(WorkspaceIO.read(body.byteStream(), WorkspaceIO.MAX_FILE_BYTES), StandardCharsets.UTF_8);
+                                byte[] decoded = getImgJar(encoded);
+                                if (decoded == null || decoded.length == 0) throw new IOException("图片JAR内容为空");
+                                return DynamicCodeFiles.writeReadOnly(new ByteArrayInputStream(decoded), decoded.length,
+                                        cache.getParentFile(), "main-download", ".jar", md5);
                             }
-                            fos.flush();
-                        } catch (IOException e) {
-                            return null;
+                            return DynamicCodeFiles.writeReadOnly(body.byteStream(), body.contentLength(),
+                                    cache.getParentFile(), "main-download", ".jar", md5);
                         }
-                        return cache;
                     }
 
                     @Override
                     public void onSuccess(Response<File> response) {
-                        File file = response.body();
-                        if (file != null && file.exists()) {
-                            try {
-                                if (jarLoader.load(file.getAbsolutePath())) {
-                                    callback.success();
-                                } else {
-                                    LOG.e("echo---jar Loader returned false");
-                                    callback.error("从网络上加载jar写入缓存后加载失败");
-                                }
-                            } catch (Exception e) {
-                                LOG.e("echo---jar Loader threw exception: " + e.getMessage());
-                                callback.error("JAR加载异常: " + e.getMessage());
+                        File candidate = response.body();
+                        boolean loaded = false;
+                        try {
+                            // A fresh loader must validate the candidate: an existing "main" loader
+                            // short-circuits load() and must not make a bad refresh look successful.
+                            JarLoader candidateLoader = new JarLoader();
+                            if (candidate != null && candidateLoader.loadCandidate(candidate.getAbsolutePath(), cache.getName(), md5)) {
+                                jarLoader = candidateLoader;
+                                loaded = true;
+                                // Only a fully validated and successfully loaded candidate replaces csp.
+                                // The helper retains the old inode; publication failure cannot lose it.
+                                DynamicCodeFiles.replacePreservingPrevious(candidate, cache);
                             }
-                        } else {
-                            LOG.e("echo---jar File not found");
-                            callback.error("从网络上加载jar地址字节数据为空");
+                        } catch (Exception e) {
+                            LOG.e("JAR缓存提交失败，保留旧缓存: " + e.getMessage());
+                        } finally {
+                            if (candidate != null && candidate.exists()) candidate.delete();
                         }
+                        if (loaded || loadCachedJar(cache, md5)) callback.success();
+                        else callback.error("JAR加载失败；原插件缓存已保留");
                     }
 
                     @Override
                     public void onError(Response<File> response) {
-                        Throwable ex = response.getException();
-                        if (ex != null) {
-                            LOG.i("echo---jar Request failed: " + ex.getMessage());
-                        }
-                        if(cache.exists())jarLoader.load(cache.getAbsolutePath());
-                        callback.error(ex != null ? "从网络上加载jar失败：" + ex.getMessage() : "未知网络错误");
+                        // A usable prior plugin is success, not success followed by an error callback.
+                        if (loadCachedJar(cache, md5)) callback.success();
+                        else callback.error("JAR下载失败；原插件缓存已保留");
                     }
                 });
     }
 
-    private void parseJson(String apiUrl, File f) throws Throwable {
-        System.out.println("从本地缓存加载" + f.getAbsolutePath());
-        BufferedReader bReader = new BufferedReader(new InputStreamReader(new FileInputStream(f), "UTF-8"));
-        StringBuilder sb = new StringBuilder();
-        String s = "";
-        while ((s = bReader.readLine()) != null) {
-            sb.append(s + "\n");
+    private boolean loadCachedJar(File cache, String md5) {
+        try {
+            DynamicCodeFiles.verifyMd5(cache, md5);
+            return jarLoader.load(cache.getAbsolutePath());
+        } catch (Throwable e) {
+            return false;
         }
-        bReader.close();
-        parseJson(apiUrl, sb.toString());
+    }
+
+    private void parseJson(String apiUrl, File f) throws Throwable {
+        parseJson(apiUrl, fixContentPath(apiUrl, WorkspaceIO.text(f)));
     }
 
     private static  String jarCache ="true";
@@ -865,31 +825,48 @@ public class ApiConfig {
         return livePlayHeaders;
     }
 
-    String clanToAddress(String lanLink) {
-        if (lanLink.startsWith("clan://localhost/")) {
-            return lanLink.replace("clan://localhost/", ControlManager.get().getAddress(true) + "file/");
-        } else {
-            String link = lanLink.substring(7);
-            int end = link.indexOf('/');
-            return "http://" + link.substring(0, end) + "/file/" + link.substring(end + 1);
-        }
+    String clanToAddress(String link) {
+        try { return WorkspaceFiles.toHttp(link); }
+        catch (IOException e) { throw new IllegalArgumentException("clan路径无效", e); }
     }
 
-    String clanContentFix(String lanLink, String content) {
-        String fix = lanLink.substring(0, lanLink.indexOf("/file/") + 6);
-        return content.replace("clan://", fix);
+    String clanContentFix(String base, String content) {
+        // This call also accepts a single live URL, not just a JSON document.
+        try { return WorkspaceFiles.reference(base, content); }
+        catch (IOException e) { throw new IllegalArgumentException("资源路径无效", e); }
     }
 
     String fixContentPath(String url, String content) {
-        if (content.contains("\"./")) {
-            url=url.replace("file://","clan://localhost/");
-            if (!url.startsWith("http") && !url.startsWith("clan://")) {
-                url = "http://" + url;
+        JsonElement json = new Gson().fromJson(content, JsonElement.class);
+        return fixReferences(url, json, 0).toString();
+    }
+
+    private JsonElement fixReferences(String base, JsonElement value, int depth) {
+        if (depth > 64) throw new IllegalArgumentException("配置嵌套过深");
+        if (value == null || value.isJsonNull()) return value;
+        if (value.isJsonObject()) {
+            JsonObject result = new JsonObject();
+            for (Map.Entry<String, JsonElement> entry : value.getAsJsonObject().entrySet()) {
+                // Site/parser identities and display names are not resource paths, even if
+                // their literal value looks like a filename (for example "source.txt").
+                if ("key".equals(entry.getKey()) || "name".equals(entry.getKey())) {
+                    result.add(entry.getKey(), entry.getValue());
+                } else {
+                    result.add(entry.getKey(), fixReferences(base, entry.getValue(), depth + 1));
+                }
             }
-            if (url.startsWith("clan://")) url = clanToAddress(url);
-            content = content.replace("./", url.substring(0, url.lastIndexOf("/") + 1));
+            return result;
         }
-        return content;
+        if (value.isJsonArray()) {
+            JsonArray result = new JsonArray();
+            for (JsonElement item : value.getAsJsonArray()) result.add(fixReferences(base, item, depth + 1));
+            return result;
+        }
+        if (value.getAsJsonPrimitive().isString()) {
+            try { return new JsonPrimitive(WorkspaceFiles.reference(base, value.getAsString())); }
+            catch (IOException e) { throw new IllegalArgumentException("配置相对路径无效", e); }
+        }
+        return value;
     }
 
     public void clearJarLoader()

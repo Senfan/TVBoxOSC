@@ -14,7 +14,6 @@ import okhttp3.Interceptor;
 import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
-import okhttp3.internal.http.RealResponseBody;
 import okio.GzipSource;
 import okio.Okio;
 import okio.Source;
@@ -25,7 +24,8 @@ public class BrotliInterceptor implements Interceptor {
     @Override
     public Response intercept(Chain chain) throws IOException {
         Request userRequest = chain.request();
-        if (chain.request().header("Accept-Encoding") == null) {
+        // A range is over the encoded representation, not the decoded bytes.
+        if (userRequest.header("Accept-Encoding") == null && userRequest.header("Range") == null) {
             userRequest = chain.request().newBuilder()
                     .header("Accept-Encoding", "br,gzip")
                     .build();
@@ -43,21 +43,27 @@ public class BrotliInterceptor implements Interceptor {
     @NotNull
     public final Response uncompress(@NotNull Response response) throws IOException {
         ResponseBody body = response.body();
-        if (body != null) {
+        if (body != null && !response.request().method().equals("HEAD")
+                && response.code() >= 200 && response.code() != 204 && response.code() != 304) {
             String encoding = response.header("Content-Encoding");
             if (isNotEmpty(encoding)) {
                 Source brotliSource;
-                if (encoding.equals("br")) {
-                    brotliSource = BrotliSource.create(body.source());
-                } else if (encoding.equals("gzip")) {
-                    brotliSource = new GzipSource(body.source());
-                } else {
-                    return response;
+                try {
+                    if (encoding.equalsIgnoreCase("br")) {
+                        brotliSource = BrotliSource.create(body.source());
+                    } else if (encoding.equalsIgnoreCase("gzip")) {
+                        brotliSource = new GzipSource(body.source());
+                    } else {
+                        return response;
+                    }
+                } catch (IOException e) {
+                    body.close();
+                    throw e;
                 }
                 return response.newBuilder()
                         .removeHeader("Content-Encoding")
                         .removeHeader("Content-Length")
-                        .body(RealResponseBody.create(body.contentType(), -1L, Okio.buffer(brotliSource)))
+                        .body(ResponseBody.create(body.contentType(), -1L, Okio.buffer(brotliSource)))
                         .build();
             } else {
                 return response;

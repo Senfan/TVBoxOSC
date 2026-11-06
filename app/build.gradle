@@ -1,7 +1,6 @@
 apply plugin: 'com.android.application'
-apply plugin: 'kotlin-android'
-apply plugin: 'kotlin-kapt'
-apply plugin: 'com.yanzhenjie.andserver'
+apply plugin: 'com.android.legacy-kapt'
+apply from: rootProject.file('gradle/andserver.gradle')
 
 def appVersion = new Properties()
 rootProject.file('version.properties').withInputStream { appVersion.load(it) }
@@ -33,11 +32,12 @@ gradle.taskGraph.whenReady { graph ->
 }
 
 android {
-    compileSdk 34
+    namespace 'com.github.tvbox.osc'
+    compileSdk 37
 
     defaultConfig {
         applicationId 'com.github.tvbox.osc.tk'
-        targetSdkVersion 28
+        targetSdk 34
         versionCode effectiveVersionCode
         versionName releaseVersionName
         multiDexEnabled true
@@ -49,8 +49,10 @@ android {
         }
     }
 
-    packagingOptions {
-        exclude 'META-INF/DEPENDENCIES'
+    packaging {
+        resources {
+            excludes += 'META-INF/DEPENDENCIES'
+        }
     }
 
     signingConfigs {
@@ -60,8 +62,8 @@ android {
                 storePassword releaseSigning.getProperty('storePassword')
                 keyAlias releaseSigning.getProperty('keyAlias')
                 keyPassword releaseSigning.getProperty('keyPassword')
-                v1SigningEnabled true
-                v2SigningEnabled true
+                enableV1Signing = true
+                enableV2Signing = true
             }
         }
     }
@@ -112,24 +114,16 @@ android {
             dimension = "mode"
             buildConfigField 'String', 'UPDATE_MODE', '"normal"'
             manifestPlaceholders.updateMode = 'normal'
-            minSdkVersion 21
+            minSdk 21
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
         python {
             dimension = "mode"
             buildConfigField 'String', 'UPDATE_MODE', '"python"'
             manifestPlaceholders.updateMode = 'python'
-            minSdkVersion 21
+            minSdk 21
             // Python 版本需要额外的 Proguard 规则
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro', 'proguard-python.pro'
-        }
-    }
-    applicationVariants.configureEach { variant ->
-        variant.outputs.configureEach { output ->
-            def flavorNames = variant.productFlavors.collect { it.name == "normal" ? "java" : it.name }.join('-')
-            // 构建自定义文件名
-            def fileName = "TVBox_${variant.buildType.name}-${flavorNames}.apk"
-            outputFileName = fileName
         }
     }
 
@@ -138,99 +132,105 @@ android {
         targetCompatibility JavaVersion.VERSION_1_8
     }
 
-    lintOptions {
-        checkReleaseBuilds false
-        abortOnError false
-    }
-
     buildFeatures {
         dataBinding = true
+        buildConfig = true
     }
 
     lint {
+        // Existing policy, not a workaround for migration failures.
+        checkReleaseBuilds = false
+        abortOnError = false
         disable 'UnsafeOptInUsageError'
     }
 }
 
-dependencies {
-    constraints {
-        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.0") {
-            because("kotlin-stdlib-jdk7 is now a part of kotlin-stdlib")
-        }
-        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.0") {
-            because("kotlin-stdlib-jdk8 is now a part of kotlin-stdlib")
+androidComponents {
+    beforeVariants(selector().all()) { variant ->
+        if (findProject(':pyramid') == null && variant.productFlavors.any { it.first == 'mode' && it.second == 'python' }) {
+            variant.enable = false
         }
     }
+}
+
+dependencies {
     api fileTree(dir: "libs", include: ['*.jar', '*.aar'])
-    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+    implementation libs.kotlin.stdlib
     // for WebDAV
-    implementation('com.github.thegrizzlylabs:sardine-android:0.8') {
+    implementation(libs.sardine) {
         exclude group: 'com.squareup.okhttp3'
     }
-    implementation 'com.github.NanoHttpd.nanohttpd:nanohttpd:nanohttpd-project-2.3.1'
-    implementation 'com.github.NanoHttpd.nanohttpd:nanohttpd:nanohttpd-websocket-2.3.1'
-    implementation 'com.google.zxing:core:3.5.1'
-    implementation 'androidx.appcompat:appcompat:1.7.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-    implementation 'androidx.lifecycle:lifecycle-extensions:2.2.0'
-    implementation 'androidx.recyclerview:recyclerview:1.3.2'
-    implementation 'com.google.android.material:material:1.12.0'
+    implementation libs.nanohttpd
+    implementation libs.nanohttpd.websocket
+    implementation libs.zxing
+    implementation libs.appcompat
+    implementation libs.constraintlayout
+    implementation libs.lifecycle.extensions
+    implementation libs.recyclerview
+    constraints {
+        implementation(libs.viewpager2) {
+            because 'Use the stable release instead of the transitive 1.1.0-beta02'
+        }
+    }
+    implementation libs.material
     implementation project(path: ':quickjs')
-    pythonImplementation project(":pyramid")
+    if (findProject(':pyramid') != null) {
+        pythonImplementation project(':pyramid')
+    }
     
-    kapt 'androidx.room:room-compiler:2.6.1'
-    implementation 'com.github.alidili:FlowLayout:v1.5'
-    implementation 'androidx.room:room-runtime:2.6.1'
-    implementation 'androidx.multidex:multidex:2.0.1'
-    implementation 'com.squareup.okhttp3:okhttp:3.12.11'
-    implementation 'com.squareup.okio:okio:3.3.0'
-    implementation 'com.github.CymChad:BaseRecyclerViewAdapterHelper:2.9.49-androidx'
-    implementation 'com.kingja.loadsir:loadsir:1.3.8'
-    implementation 'com.google.code.gson:gson:2.10.1'
-    implementation 'com.github.bumptech.glide:glide:4.16.0'
-    kapt 'com.github.bumptech.glide:compiler:4.16.0'
-    implementation 'me.jessyan:autosize:1.2.1'
-    implementation('com.thoughtworks.xstream:xstream:1.4.20') {
+    kapt libs.room.compiler
+    implementation libs.flowlayout
+    implementation libs.room.runtime
+    implementation libs.multidex
+    implementation libs.okhttp
+    implementation libs.okio
+    implementation libs.brvah
+    implementation libs.loadsir
+    implementation libs.gson
+    implementation libs.glide
+    kapt libs.glide.compiler
+    implementation libs.autosize
+    implementation(libs.xstream) {
         exclude group: 'xmlpull', module: 'xmlpull'
     }
-    implementation 'org.greenrobot:eventbus:3.3.1'
-    implementation 'com.orhanobut:hawk:2.0.1'
-    implementation 'net.sourceforge.streamsupport:android-retrofuture:1.7.4'
-    implementation 'androidx.annotation:annotation:1.8.2'
-    implementation "androidx.media3:media3-exoplayer:1.3.1"
-    implementation "androidx.media3:media3-ui:1.3.1"
-    implementation "androidx.media3:media3-exoplayer-dash:1.3.1"
-    implementation "androidx.media3:media3-exoplayer-hls:1.3.1"
-    implementation "androidx.media3:media3-exoplayer-rtsp:1.3.1"
-    implementation "androidx.media3:media3-datasource-rtmp:1.3.1"
-    implementation 'androidx.media3:media3-common:1.3.1'
-    implementation "com.github.anilbeesetti.nextlib:nextlib-media3ext:0.7.1"
+    implementation libs.eventbus
+    implementation libs.hawk
+    implementation libs.retrofuture
+    implementation libs.annotation
+    implementation libs.media3.exoplayer
+    implementation libs.media3.ui
+    implementation libs.media3.dash
+    implementation libs.media3.hls
+    implementation libs.media3.rtsp
+    implementation libs.media3.rtmp
+    implementation libs.media3.common
+    implementation libs.nextlib
 
 
 
-    implementation "com.aliyun.sdk.android:AliyunPlayer:5.5.2.0-full"
-    implementation 'com.alivc.conan:AlivcConan:0.9.5'
-    implementation 'xyz.doikki.android.dkplayer:dkplayer-ui:3.3.7'
-    implementation 'xyz.doikki.android.dkplayer:videocache:3.3.7'
+    implementation libs.aliyun.player
+    implementation libs.aliyun.conan
+    implementation libs.dkplayer.ui
+    implementation libs.dkplayer.cache
 
-    implementation 'com.lzy.net:okgo:3.0.4'
-    implementation 'com.owen:tv-recyclerview:3.0.0'
-    implementation 'com.blankj:utilcodex:1.31.0'
-    implementation 'com.github.getActivity:XXPermissions:18.5'
-    implementation 'org.jsoup:jsoup:1.16.1'
-    implementation 'com.github.hedzr:android-file-chooser:v1.2.0-final'
-    implementation 'commons-io:commons-io:2.13.0'
-    implementation 'com.googlecode.juniversalchardet:juniversalchardet:1.0.3'
+    implementation libs.okgo
+    implementation libs.tv.recyclerview
+    implementation libs.utilcodex
+    implementation libs.permissions
+    implementation libs.jsoup
+    implementation libs.filechooser
+    implementation libs.commons.io
+    implementation libs.chardet
 //    implementation files('libs/thunder.jar')
-    implementation 'org.apache.commons:commons-text:1.10.0'
-    implementation 'com.github.seven332:jcifs:1.3.19'
-    implementation 'org.conscrypt:conscrypt-android:2.5.2'
-    implementation 'io.github.inflationx:viewpump:2.1.1'
-    implementation 'io.github.inflationx:calligraphy3:3.1.1'
-    implementation 'com.yanzhenjie.andserver:api:2.1.12'
-    kapt 'com.yanzhenjie.andserver:processor:2.1.12'
-    implementation 'com.github.ctiao:DanmakuFlameMaster:0.9.25'
-    implementation('org.simpleframework:simple-xml:2.7.1') {
+    implementation libs.commons.text
+    implementation libs.jcifs
+    implementation libs.conscrypt
+    implementation libs.viewpump
+    implementation libs.calligraphy
+    implementation libs.andserver.api
+    kapt libs.andserver.processor
+    implementation libs.danmaku
+    implementation(libs.simplexml) {
         exclude group: 'stax', module: 'stax-api'
         exclude group: 'xpp3', module: 'xpp3'
     }

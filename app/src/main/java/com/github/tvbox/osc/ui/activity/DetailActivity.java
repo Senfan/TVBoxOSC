@@ -1,5 +1,6 @@
 package com.github.tvbox.osc.ui.activity;
 
+import android.Manifest;
 import android.app.PendingIntent;
 import android.app.PictureInPictureParams;
 import android.app.RemoteAction;
@@ -27,11 +28,14 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.RequiresApi;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+import android.content.pm.PackageManager;
 import androidx.fragment.app.FragmentContainerView;
 import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModelProvider;
 
-import com.blankj.utilcode.util.ServiceUtils;
+import com.github.tvbox.osc.player.MyVideoView;
 import com.blankj.utilcode.util.ToastUtils;
 import com.chad.library.adapter.base.BaseQuickAdapter;
 import com.github.tvbox.osc.R;
@@ -153,7 +157,14 @@ public class DetailActivity extends BaseActivity {
 
     private final List<Movie.Video> quickSearchData = new ArrayList<>();
     private BroadcastReceiver pipActionReceiver;
-    public static final String BROADCAST_ACTION = "VOD_CONTROL";
+    private final String playbackSession = java.util.UUID.randomUUID().toString();
+    private boolean activityResumed;
+    private boolean activityDestroyed;
+    private boolean notificationPermissionRequested;
+
+    public String getPlaybackControlAction() {
+        return getPackageName() + ".vod.detail." + playbackSession;
+    }
     public static final int BROADCAST_ACTION_PREV = 0;
     public static final int BROADCAST_ACTION_PLAYPAUSE = 1;
     public static final int BROADCAST_ACTION_NEXT = 2;
@@ -201,17 +212,27 @@ public class DetailActivity extends BaseActivity {
 
     @Override
     protected void onResume() {
+        activityResumed = true;
         super.onResume();
         openBackgroundPlay = false;
         playServerSwitch(false);
+        // Notification denial does not prohibit a media FGS; Android still shows its task entry.
+        // Ask only for the background-play feature, never from Home/network/update startup.
+        if (Build.VERSION.SDK_INT >= 33 && !notificationPermissionRequested
+                && Hawk.get(HawkConfig.BACKGROUND_PLAY_TYPE, 0) == 1
+                && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            notificationPermissionRequested = true;
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, 3401);
+        }
     }
 
     @Override
     protected void onPause() {
+        // Start while the Activity is still visible, before Fragment.onPause can pause the player.
+        if (openBackgroundPlay) playServerSwitch(true);
+        activityResumed = false;
         super.onPause();
-        if (openBackgroundPlay) {
-            playServerSwitch(true);
-        }
     }
 
     private void initReceiver() {
@@ -220,9 +241,9 @@ public class DetailActivity extends BaseActivity {
             mHomeKeyReceiver = new BroadcastReceiver() {
                 @Override
                 public void onReceive(Context context, Intent intent) {
-                    String action = intent.getAction();
-                    if (action != null && action.equals(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)) {
-                        openBackgroundPlay = Hawk.get(HawkConfig.BACKGROUND_PLAY_TYPE, 0) == 1 && playFragment.getPlayer() != null && playFragment.getPlayer().isPlaying();
+                    if (intent != null && Intent.ACTION_CLOSE_SYSTEM_DIALOGS.equals(intent.getAction())
+                            && activityResumed) {
+                        openBackgroundPlay = canStartBackgroundPlayback(getPreviewPlayer());
                     }
                 }
             };
@@ -1100,6 +1121,9 @@ public class DetailActivity extends BaseActivity {
 
     @Override
     protected void onDestroy() {
+        activityDestroyed = true;
+        playServerSwitch(false);
+        registerActionReceiver(false);
         super.onDestroy();
         // 注销广播接收器
         if (mHomeKeyReceiver != null) {
@@ -1124,8 +1148,12 @@ public class DetailActivity extends BaseActivity {
 
     @Override
     public void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        openBackgroundPlay = canStartBackgroundPlayback(getPreviewPlayer());
+        if (openBackgroundPlay) playServerSwitch(true);
         // takagen99 : Additional check for external player
-        if (supportsPiPMode() && showPreview && !playFragment.extPlay && Hawk.get(HawkConfig.BACKGROUND_PLAY_TYPE, 0) == 2) {
+        if (supportsPiPMode() && showPreview && getPreviewPlayer() != null
+                && !playFragment.extPlay && Hawk.get(HawkConfig.BACKGROUND_PLAY_TYPE, 0) == 2) {
             // 创建一个Intent对象，模拟按下Home键
             try { //部分电视使用该方法启动首页闪退比如小米的澎湃OS
                 Intent intent = new Intent(Intent.ACTION_MAIN);
@@ -1174,8 +1202,9 @@ public class DetailActivity extends BaseActivity {
                 PendingIntent.getBroadcast(
                         DetailActivity.this,
                         actionCode,
-                        new Intent(BROADCAST_ACTION).putExtra("action", actionCode),
-                        0);
+                        new Intent(getPlaybackControlAction()).setPackage(getPackageName())
+                                .putExtra("action", actionCode),
+                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         final Icon icon = Icon.createWithResource(DetailActivity.this, iconResId);
         return (new RemoteAction(icon, title, desc, intent));
     }
@@ -1187,15 +1216,14 @@ public class DetailActivity extends BaseActivity {
      */
     private void registerActionReceiver(boolean isRegister) {
         if (isRegister) {
-            pipActionReceiver = new BroadcastReceiver() {
-
+            if (pipActionReceiver != null || activityDestroyed) return;
+            BroadcastReceiver receiver = new BroadcastReceiver() {
                 @Override
                 public void onReceive(Context context, Intent intent) {
-                    if (intent == null || !intent.getAction().equals(BROADCAST_ACTION) || playFragment.getVodController() == null) {
-                        return;
-                    }
-
-                    int currentStatus = intent.getIntExtra("action", 1);
+                    if (intent == null || !getPlaybackControlAction().equals(intent.getAction())
+                            || activityDestroyed || getPreviewPlayer() == null
+                            || playFragment.getVodController() == null) return;
+                    int currentStatus = intent.getIntExtra("action", -1);
                     if (currentStatus == BROADCAST_ACTION_PREV) {
                         playFragment.playPrevious();
                     } else if (currentStatus == BROADCAST_ACTION_PLAYPAUSE) {
@@ -1205,43 +1233,71 @@ public class DetailActivity extends BaseActivity {
                     }
                 }
             };
-            registerReceiver(pipActionReceiver, new IntentFilter(BROADCAST_ACTION));
-
-        } else {
-            if (pipActionReceiver != null) {
-                unregisterReceiver(pipActionReceiver);
-                pipActionReceiver = null;
-            }
-            if (playFragment.getPlayer().isPlaying()) {
-                playFragment.getVodController().togglePlay();
-            }
-        }
-    }
-
-    @Override
-    public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
-        super.onPictureInPictureModeChanged(isInPictureInPictureMode);
-        if (supportsPiPMode() && isInPictureInPictureMode) {
-            registerActionReceiver(true);
+            ContextCompat.registerReceiver(this, receiver, new IntentFilter(getPlaybackControlAction()),
+                    ContextCompat.RECEIVER_NOT_EXPORTED);
+            pipActionReceiver = receiver;
         } else if (pipActionReceiver != null) {
             unregisterReceiver(pipActionReceiver);
             pipActionReceiver = null;
         }
     }
 
-    /**
-     * 后台播放服务开关,开启时注册操作广播,关闭时注销
-     */
+    @Override
+    public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode);
+        registerActionReceiver((supportsPiPMode() && isInPictureInPictureMode)
+                || PlayService.owns(getPlaybackControlAction(), getPreviewPlayer()));
+    }
+
+    private MyVideoView getPreviewPlayer() {
+        return playFragment == null ? null : playFragment.getPlayer();
+    }
+
+    public boolean canStartBackgroundPlayback(MyVideoView player) {
+        return activityResumed && isBackgroundPlaybackOwner(player)
+                && player.getMediaPlayer() != null && player.isPlaying();
+    }
+
+    public boolean isBackgroundPlaybackOwner(MyVideoView player) {
+        return !activityDestroyed && !isFinishing() && showPreview && playFragment != null
+                && !playFragment.extPlay && player != null && player == getPreviewPlayer()
+                && Hawk.get(HawkConfig.BACKGROUND_PLAY_TYPE, 0) == 1;
+    }
+
+    public boolean keepPlaybackInBackground(MyVideoView player) {
+        return openBackgroundPlay && isBackgroundPlaybackOwner(player)
+                && PlayService.owns(getPlaybackControlAction(), player);
+    }
+
+    public String getBackgroundPlaybackTitle() {
+        return playFragment == null ? "" : playFragment.getPlaybackTitle();
+    }
+
+    public void onBackgroundPlaybackStopped(String action, boolean failed) {
+        if (!getPlaybackControlAction().equals(action)) return;
+        openBackgroundPlay = false;
+        if (!supportsPiPMode() || !isInPictureInPictureMode()) registerActionReceiver(false);
+        MyVideoView player = getPreviewPlayer();
+        if (!activityResumed && player != null) player.pauseForLifecycle();
+        if (failed && !activityDestroyed) ToastUtils.showShort("后台播放启动失败，已暂停后台播放");
+    }
+
+    public void onPreviewPlayerDestroyed() {
+        playServerSwitch(false);
+        registerActionReceiver(false);
+    }
+
+    /** Only the visible DetailActivity may hand an already-playing preview to the service. */
     private void playServerSwitch(boolean open) {
         if (open) {
-            VodInfo.VodSeries vod = vodInfo.seriesMap.get(vodInfo.playFlag).get(vodInfo.playIndex);
-            PlayService.start(playFragment.getPlayer(), vodInfo.name + "&&" + vod.name);
+            MyVideoView player = getPreviewPlayer();
+            if (!canStartBackgroundPlayback(player)) return;
             registerActionReceiver(true);
+            openBackgroundPlay = PlayService.start(this, player, getPlaybackControlAction());
+            if (!openBackgroundPlay) registerActionReceiver(false);
         } else {
-            if (ServiceUtils.isServiceRunning(PlayService.class)) {
-                PlayService.stop();
-                registerActionReceiver(false);
-            }
+            PlayService.stop(getPlaybackControlAction());
+            if (!supportsPiPMode() || !isInPictureInPictureMode()) registerActionReceiver(false);
         }
     }
 

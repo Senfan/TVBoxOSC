@@ -5,6 +5,7 @@ import android.util.Log;
 
 import com.github.tvbox.osc.base.App;
 
+import com.github.tvbox.osc.util.DynamicCodeFiles;
 import com.github.tvbox.osc.util.FileUtils;
 import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.MD5;
@@ -13,15 +14,14 @@ import com.github.tvbox.osc.util.js.JsSpider;
 import com.lzy.okgo.OkGo;
 
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.IOException;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import dalvik.system.DexClassLoader;
 import okhttp3.Response;
+import okhttp3.ResponseBody;
 
 public class JsLoader {
     private static final ConcurrentHashMap<String, Spider> spiders = new ConcurrentHashMap<>();
@@ -46,14 +46,46 @@ public class JsLoader {
         }
     }
 
-    private boolean loadClassLoader(String jar, String key) {
+    private File codeDir() {
+        return new File(App.getInstance().getFilesDir(), "dynamic_code/js");
+    }
+
+    private boolean loadClassLoader(String jar, String key, String md5) {
+        if (classes.containsKey(key)) return true;
+        File prepared = null;
+        try {
+            prepared = DynamicCodeFiles.prepareForLoading(new File(jar), codeDir(), key, ".jar", md5);
+            if (loadPrepared(prepared, key)) return true;
+        } catch (Throwable th) {
+            th.printStackTrace();
+        }
+        if (prepared != null) prepared.delete(); // Only this failed attempt's private copy.
+        return false;
+    }
+
+    private boolean loadPrevious(String key, String md5) {
+        try {
+            File previous = DynamicCodeFiles.latestReadOnly(codeDir(), key, ".jar");
+            if (previous != null) {
+                DynamicCodeFiles.verifyMd5(previous, md5);
+                Log.i("JSLoader", "echo-回退到私有只读jsapi缓存");
+                return loadPrepared(previous, key);
+            }
+        } catch (Throwable th) {
+            th.printStackTrace();
+        }
+        return false;
+    }
+
+    private boolean loadPrepared(File jar, String key) {
         boolean success = false;
         Class<?> classInit = null;
         try {
+            if (!DynamicCodeFiles.isReadOnlyRegularFile(jar)) throw new IOException("拒绝加载可写jsapi jar");
             File cacheDir = new File(App.getInstance().getCacheDir().getAbsolutePath() + "/catvod_jsapi");
             if (!cacheDir.exists())
                 cacheDir.mkdirs();
-            DexClassLoader classLoader = new DexClassLoader(jar, cacheDir.getAbsolutePath(), null, App.getInstance().getClassLoader());
+            DexClassLoader classLoader = new DexClassLoader(jar.getAbsolutePath(), cacheDir.getAbsolutePath(), null, App.getInstance().getClassLoader());
             int count = 0;
             do {
                 try {
@@ -71,7 +103,7 @@ public class JsLoader {
             } while (count < 5);
 
             if (success) {
-                classes.put(key, classInit);
+                classes.putIfAbsent(key, classInit);
             }
         } catch (Throwable th) {
             th.printStackTrace();
@@ -84,43 +116,30 @@ public class JsLoader {
             Log.i("JSLoader", "echo-loadJarInternal cached");
             return classes.get(key);
         }
-        File cache = new File(App.getInstance().getFilesDir().getAbsolutePath() + "/csp/" + key + ".jar");
-        if (!md5.isEmpty()) {
-            if (cache.exists() && MD5.getFileMd5(cache).equalsIgnoreCase(md5)) {
-                loadClassLoader(cache.getAbsolutePath(), key);
-                return classes.get(key);
-            }
-        }else {
-            if (cache.exists() && !FileUtils.isWeekAgo(cache)) {
-                if(loadClassLoader(cache.getAbsolutePath(), key)){
-                    return classes.get(key);
-                }
-            }
+        File cache = new File(App.getInstance().getFilesDir(), "csp/" + key + ".jar");
+        if (cache.exists() && (!md5.isEmpty() || !FileUtils.isWeekAgo(cache))) {
+            if (loadClassLoader(cache.getAbsolutePath(), key, md5)) return classes.get(key);
         }
+        File candidate = null;
         try {
             Response response = OkGo.<File>get(jar).execute();
-            InputStream is = response.body().byteStream();
-            OutputStream os = new FileOutputStream(cache);
-            try {
-                byte[] buffer = new byte[2048];
-                int length;
-                while ((length = is.read(buffer)) > 0) {
-                    os.write(buffer, 0, length);
-                }
-            } finally {
-                try {
-                    is.close();
-                    os.close();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
+            try (ResponseBody body = response.body()) {
+                if (!response.isSuccessful() || body == null) throw new IOException("下载jsapi jar失败");
+                candidate = DynamicCodeFiles.writeReadOnly(body.byteStream(), body.contentLength(),
+                        cache.getParentFile(), key, ".jar", md5);
             }
-            loadClassLoader(cache.getAbsolutePath(), key);
-            return classes.get(key);
+            if (loadClassLoader(candidate.getAbsolutePath(), key, md5)) {
+                DynamicCodeFiles.replacePreservingPrevious(candidate, cache);
+                return classes.get(key);
+            }
         } catch (Throwable e) {
             e.printStackTrace();
+        } finally {
+            if (candidate != null && candidate.exists()) candidate.delete();
         }
-        return null;
+        if (classes.containsKey(key)) return classes.get(key);
+        if (cache.exists() && loadClassLoader(cache.getAbsolutePath(), key, md5)) return classes.get(key);
+        return loadPrevious(key, md5) ? classes.get(key) : null;
     }
 
     public Spider getSpider(String key, String api, String ext, String jar) {

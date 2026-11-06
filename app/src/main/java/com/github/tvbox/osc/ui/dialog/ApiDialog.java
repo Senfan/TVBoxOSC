@@ -1,6 +1,13 @@
 package com.github.tvbox.osc.ui.dialog;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import java.io.File;
+import java.io.IOException;
+import com.github.tvbox.osc.util.WorkspaceFiles;
+import com.github.tvbox.osc.util.WorkspaceIO;
+import com.github.tvbox.osc.util.WorkspaceImport;
+import com.obsez.android.lib.filechooser.ChooserDialog;
 import android.content.Context;
 import android.view.View;
 import android.widget.EditText;
@@ -85,11 +92,16 @@ public class ApiDialog extends BaseDialog {
                 String newLive = inputLive.getText().toString().trim();
                 String newEPG = inputEPG.getText().toString().trim();
                 String newProxyServer = inputProxy.getText().toString().trim();
-                // takagen99: Convert all to clan://localhost format
-                if (newApi.startsWith("file://")) {
-                    newApi = newApi.replace("file://", "clan://localhost/");
-                } else if (newApi.startsWith("./")) {
-                    newApi = newApi.replace("./", "clan://localhost/");
+                try {
+                    if (newApi.startsWith("file:/")) {
+                        File file = WorkspaceFiles.fromLocalUrl(newApi);
+                        if (file != null) newApi = WorkspaceFiles.clan(file);
+                    } else if (newApi.startsWith("./")) {
+                        newApi = WorkspaceFiles.clan(WorkspaceFiles.resolve(newApi.substring(2)));
+                    }
+                } catch (IOException e) {
+                    Toast.makeText(getContext(), "本地路径无效，请导入整个配置目录或ZIP", Toast.LENGTH_LONG).show();
+                    return;
                 }
                 if (!newApi.isEmpty()) {
                     ArrayList<String> history = Hawk.get(HawkConfig.API_HISTORY, new ArrayList<String>());
@@ -209,36 +221,76 @@ public class ApiDialog extends BaseDialog {
                 dialog.show();
             }
         });
-        findViewById(R.id.storagePermission).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (XXPermissions.isGranted(getContext(), DefaultConfig.StoragePermissionGroup())) {
-                    Toast.makeText(getContext(), "已获得存储权限", Toast.LENGTH_SHORT).show();
-                } else {
-                    XXPermissions.with(getContext())
-                            .permission(DefaultConfig.StoragePermissionGroup())
-                            .request(new OnPermissionCallback() {
-                                @Override
-                                public void onGranted(List<String> permissions, boolean all) {
-                                    if (all) {
-                                        Toast.makeText(getContext(), "已获得存储权限", Toast.LENGTH_SHORT).show();
-                                    }
-                                }
+        findViewById(R.id.workspaceImport).setOnClickListener(v ->
+                WorkspaceImport.choose(getContext(), false, this::selectImportedConfig));
+        findViewById(R.id.storagePermission).setOnClickListener(v ->
+                new AlertDialog.Builder(getContext()).setTitle("可选传统目录迁移")
+                        .setMessage("仅用于旧系统/旧目录。授权后请选择配置所在目录，完整复制到私有工作区，不删除原件。不需要此功能可使用系统导入。")
+                        .setNegativeButton("取消", null)
+                        .setPositiveButton("选择传统目录", (dialog, which) -> requestLegacyImport()).show());
+        refreshQRCode();
+    }
 
-                                @Override
-                                public void onDenied(List<String> permissions, boolean never) {
-                                    if (never) {
-                                        Toast.makeText(getContext(), "获取存储权限失败,请在系统设置中开启", Toast.LENGTH_SHORT).show();
-                                        XXPermissions.startPermissionActivity((Activity) getContext(), permissions);
-                                    } else {
-                                        Toast.makeText(getContext(), "获取存储权限失败", Toast.LENGTH_SHORT).show();
-                                    }
-                                }
-                            });
-                }
+    private void requestLegacyImport() {
+        if (XXPermissions.isGranted(getContext(), DefaultConfig.StoragePermissionGroup())) {
+            chooseLegacyDirectory();
+            return;
+        }
+        XXPermissions.with(getContext()).permission(DefaultConfig.StoragePermissionGroup()).request(new OnPermissionCallback() {
+            @Override public void onGranted(List<String> permissions, boolean all) {
+                if (all) chooseLegacyDirectory();
+                else Toast.makeText(getContext(), "未获得完整授权，请使用系统导入", Toast.LENGTH_LONG).show();
+            }
+            @Override public void onDenied(List<String> permissions, boolean never) {
+                Toast.makeText(getContext(), "未授权，原配置未改变；可使用系统导入", Toast.LENGTH_LONG).show();
             }
         });
-        refreshQRCode();
+    }
+
+    private void chooseLegacyDirectory() {
+        new ChooserDialog(getContext(), R.style.FileChooserStyle).withFilter(true, true)
+                .withStringResources("选择完整配置目录（不移动原件）", "复制", "取消").enableDpad(true)
+                .withChosenListener((path, source) -> {
+                    Toast.makeText(getContext(), "正在复制配置目录…", Toast.LENGTH_SHORT).show();
+                    new Thread(() -> {
+                        File stage = null;
+                        try {
+                            stage = WorkspaceFiles.newStage();
+                            WorkspaceIO.copyTree(source, stage, new WorkspaceIO.Budget());
+                            File imported = WorkspaceIO.publish(stage, WorkspaceFiles.root());
+                            inputApi.post(() -> { if (isShowing()) selectImportedConfig(imported); });
+                        } catch (IOException e) {
+                            inputApi.post(() -> Toast.makeText(getContext(), "迁移失败，原件未改变：" + e.getMessage(), Toast.LENGTH_LONG).show());
+                        } finally {
+                            if (stage != null && stage.exists()) try { WorkspaceIO.deleteTree(stage); } catch (IOException ignored) { }
+                        }
+                    }, "legacy-config-copy").start();
+                }).show();
+    }
+
+    private void selectImportedConfig(File directory) {
+        if (!isShowing()) return;
+        ArrayList<File> configs = new ArrayList<>();
+        findConfigs(directory, configs);
+        if (configs.isEmpty()) {
+            Toast.makeText(getContext(), "已导入资源；未发现JSON/TXT配置，可在电脑配置页选择文件", Toast.LENGTH_LONG).show();
+            return;
+        }
+        String[] names = new String[configs.size()];
+        for (int i = 0; i < names.length; i++) names[i] = configs.get(i).getAbsolutePath().substring(directory.getAbsolutePath().length() + 1);
+        new AlertDialog.Builder(getContext()).setTitle("选择配置（确定后生效）").setItems(names, (dialog, which) -> {
+            try { inputApi.setText(WorkspaceFiles.clan(configs.get(which))); }
+            catch (IOException e) { Toast.makeText(getContext(), "文件路径无效", Toast.LENGTH_SHORT).show(); }
+        }).setNegativeButton("取消", null).show();
+    }
+
+    private static void findConfigs(File directory, ArrayList<File> result) {
+        File[] files = directory.listFiles();
+        if (files == null) return;
+        for (File file : files) {
+            if (file.isDirectory()) findConfigs(file, result);
+            else if (file.getName().toLowerCase(java.util.Locale.ROOT).matches(".*\\.(json|txt)$")) result.add(file);
+        }
     }
 
     private void refreshQRCode() {

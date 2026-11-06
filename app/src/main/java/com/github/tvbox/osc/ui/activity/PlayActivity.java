@@ -43,6 +43,7 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
+import androidx.core.content.ContextCompat;
 import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.media3.common.Player;
@@ -105,7 +106,9 @@ import com.lzy.okgo.OkGo;
 import com.lzy.okgo.callback.AbsCallback;
 import com.lzy.okgo.model.HttpHeaders;
 import com.lzy.okgo.model.Response;
-import com.obsez.android.lib.filechooser.ChooserDialog;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import com.github.tvbox.osc.util.MediaFileAccess;
 import com.orhanobut.hawk.Hawk;
 
 import org.greenrobot.eventbus.EventBus;
@@ -158,7 +161,11 @@ public class PlayActivity extends BaseActivity {
     private List<String> videoSegmentationURL = new ArrayList<>();
 
     private BroadcastReceiver pipActionReceiver;
-    public static final String BROADCAST_ACTION = "VOD_CONTROL";
+    private final String playbackSession = java.util.UUID.randomUUID().toString();
+
+    private String getPlaybackControlAction() {
+        return getPackageName() + ".vod.play." + playbackSession;
+    }
     public static final int BROADCAST_ACTION_PREV = 0;
     public static final int BROADCAST_ACTION_PLAYPAUSE = 1;
     public static final int BROADCAST_ACTION_NEXT = 2;
@@ -169,7 +176,18 @@ public class PlayActivity extends BaseActivity {
     private String retryContentKey;
     private HashMap<String, String> videoHeaders;
     private PlaybackFallbackController fallbackController;
+    private final MediaFileAccess.PendingExternalPlayback pendingExternalPlayback =
+            new MediaFileAccess.PendingExternalPlayback();
     private long retryResumePosition = -1;
+    private final ActivityResultLauncher<String[]> subtitlePicker = registerForActivityResult(
+            new ActivityResultContracts.OpenDocument(), uri -> {
+                if (uri == null) return;
+                MediaFileAccess.importSubtitle(this, uri, (path, error) -> {
+                    if (isFinishing() || isDestroyed() || mVideoView == null) return;
+                    if (error != null) Toast.makeText(this, error, Toast.LENGTH_SHORT).show();
+                    else setSubtitle(path);
+                });
+            });
 
     @Override
     protected int getLayoutResID() {
@@ -231,6 +249,7 @@ public class PlayActivity extends BaseActivity {
     }
 
     private void resetPlaybackRetry() {
+        pendingExternalPlayback.cancel();
         retryPolicy.reset();
         retryResumePosition = -1;
         if (fallbackController != null) fallbackController.cancelAttempt(true);
@@ -469,18 +488,12 @@ public class PlayActivity extends BaseActivity {
         subtitleDialog.setLocalFileChooserListener(new SubtitleDialog.LocalFileChooserListener() {
             @Override
             public void openLocalFileChooserDialog() {
-                new ChooserDialog(PlayActivity.this)
-                        .withFilter(false, false, "srt", "ass", "scc", "stl", "ttml")
-                        .withStartFile("/storage/emulated/0/Download")
-                        .withChosenListener(new ChooserDialog.Result() {
-                            @Override
-                            public void onChoosePath(String path, File pathFile) {
-                                LOG.i("Local SubtitleBean Path: " + path);
-                                setSubtitle(path);//设置字幕
-                            }
-                        })
-                        .build()
-                        .show();
+                try {
+                    subtitlePicker.launch(new String[]{"*/*"});
+                } catch (android.content.ActivityNotFoundException e) {
+                    android.util.Log.w("PlayActivity", "No document picker available", e);
+                    Toast.makeText(PlayActivity.this, "系统未提供文件选择器", Toast.LENGTH_SHORT).show();
+                }
             }
         });
         subtitleDialog.show();
@@ -655,12 +668,7 @@ public class PlayActivity extends BaseActivity {
     }
 
     void openMyVideo() {
-        Intent i = new Intent();
-        i.addCategory(Intent.CATEGORY_DEFAULT);
-        i.setAction(Intent.ACTION_VIEW);
-        if (videoURL == null) return;
-        i.setDataAndType(Uri.parse(videoURL), "video/*");
-        startActivity(Intent.createChooser(i, "Open Video with ..."));
+        if (videoURL != null) MediaFileAccess.openVideo(this, videoURL);
     }
 
     void setTip(String msg, boolean loading, boolean err) {
@@ -844,6 +852,7 @@ public class PlayActivity extends BaseActivity {
                     || !TextUtils.equals(contentKey, retryContentKey)
                     || generation != fallbackController.getGeneration()) return;
             stopParse();
+            pendingExternalPlayback.cancel();
             fallbackController.cancelAttempt(false);
             mVideoView.release();
             videoURL = url;
@@ -864,14 +873,25 @@ public class PlayActivity extends BaseActivity {
             if (extPlay) {
                 VodInfo.VodSeries vs = mVodInfo.seriesMap.get(mVodInfo.playFlag).get(mVodInfo.getplayIndex());
                 String title = mVodInfo.name + " : " + vs.name;
-                if (PlayerHelper.launchExternal(this, playerType, url, title, playSubtitle, videoHeaders)) {
-                    fallbackController.externalOpened();
-                    setTip(getString(pending ? R.string.player_external_opened : R.string.player_external_launched,
-                            PlayerHelper.getPlayerName(playerType)), false, false);
-                } else {
-                    extPlay = false;
-                    errorWithRetry(getString(R.string.player_external_failed), false, PlaybackRetryPolicy.ErrorType.PLAYER);
-                }
+                long externalRequest = pendingExternalPlayback.begin();
+                MediaFileAccess.prepareExternal(this, url, playSubtitle, (video, subtitle, error) -> {
+                    if (isFinishing() || isDestroyed() || mVideoView == null) return;
+                    pendingExternalPlayback.complete(externalRequest, token, () -> {
+                        if (isFinishing() || isDestroyed() || mVideoView == null
+                                || token != fallbackController.getGeneration()) return;
+                        if (error == null && PlayerHelper.launchExternal(this, playerType,
+                                video, title, subtitle, videoHeaders)) {
+                            fallbackController.externalOpened();
+                            setTip(getString(pending ? R.string.player_external_opened : R.string.player_external_launched,
+                                    PlayerHelper.getPlayerName(playerType)), false, false);
+                        } else {
+                            extPlay = false;
+                            errorWithRetry(getString(R.string.player_external_failed), false, PlaybackRetryPolicy.ErrorType.PLAYER);
+                        }
+                    });
+                    pendingExternalPlayback.consume(fallbackController.getGeneration(),
+                            getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED));
+                });
                 return;
             }
             hideTip();
@@ -1234,6 +1254,7 @@ public class PlayActivity extends BaseActivity {
             fallbackController.setForeground(true);
             fallbackController.showExternalConfirmation(this,
                     Build.VERSION.SDK_INT < Build.VERSION_CODES.N || !isInPictureInPictureMode());
+            pendingExternalPlayback.consume(fallbackController.getGeneration(), true);
         }
         if (mVideoView != null) {
             onStopCalled = false;
@@ -1263,8 +1284,9 @@ public class PlayActivity extends BaseActivity {
         final PendingIntent intent = PendingIntent.getBroadcast(
                         PlayActivity.this,
                         actionCode,
-                        new Intent(BROADCAST_ACTION).putExtra("action", actionCode),
-                        0);
+                        new Intent(getPlaybackControlAction()).setPackage(getPackageName())
+                                .putExtra("action", actionCode),
+                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         final Icon icon = Icon.createWithResource(PlayActivity.this, iconResId);
         return (new android.app.RemoteAction(icon, title, desc, intent));
     }
@@ -1274,15 +1296,17 @@ public class PlayActivity extends BaseActivity {
     public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode);
         if (supportsPiPMode() && isInPictureInPictureMode) {
-            pipActionReceiver = new BroadcastReceiver() {
+            if (pipActionReceiver != null) return;
+            BroadcastReceiver receiver = new BroadcastReceiver() {
 
                 @Override
                 public void onReceive(Context context, Intent intent) {
-                    if (intent == null || !intent.getAction().equals(BROADCAST_ACTION) || mController == null) {
+                    if (intent == null || !getPlaybackControlAction().equals(intent.getAction())
+                            || mController == null || mVideoView == null || isFinishing() || isDestroyed()) {
                         return;
                     }
 
-                    int currentStatus = intent.getIntExtra("action", 1);
+                    int currentStatus = intent.getIntExtra("action", -1);
                     if (currentStatus == BROADCAST_ACTION_PREV) {
                         playPrevious();
                     } else if (currentStatus == BROADCAST_ACTION_PLAYPAUSE) {
@@ -1292,7 +1316,9 @@ public class PlayActivity extends BaseActivity {
                     }
                 }
             };
-            registerReceiver(pipActionReceiver, new IntentFilter(BROADCAST_ACTION));
+            ContextCompat.registerReceiver(this, receiver, new IntentFilter(getPlaybackControlAction()),
+                    ContextCompat.RECEIVER_NOT_EXPORTED);
+            pipActionReceiver = receiver;
 
         } else {
             // Closed playback
@@ -1300,16 +1326,21 @@ public class PlayActivity extends BaseActivity {
                 if (danmuController != null) danmuController.clear();
                 if (mVideoView != null) mVideoView.release();
             }
-            if (pipActionReceiver != null) {
-                unregisterReceiver(pipActionReceiver);
-                pipActionReceiver = null;
-            }
+            unregisterActionReceiver();
         }
         if (isInPictureInPictureMode || !onStopCalled) setDanmuViewSettings(false);
     }
 
+    private void unregisterActionReceiver() {
+        if (pipActionReceiver == null) return;
+        unregisterReceiver(pipActionReceiver);
+        pipActionReceiver = null;
+    }
+
     @Override
     protected void onDestroy() {
+        pendingExternalPlayback.cancel();
+        unregisterActionReceiver();
         super.onDestroy();
         if (fallbackController != null) fallbackController.release();
         if (sourceViewModel != null) sourceViewModel.cancelPlayRequest();

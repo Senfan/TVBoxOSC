@@ -10,6 +10,7 @@ import android.os.Parcelable;
 import android.util.Log;
 
 import com.github.tvbox.osc.base.App;
+import com.github.tvbox.osc.util.MediaFileAccess;
 
 import java.net.URLEncoder;
 import java.util.HashMap;
@@ -82,7 +83,7 @@ public class MXPlayer {
             Intent intent = new Intent(Intent.ACTION_VIEW);
             intent.setPackage(packageInfo.packageName);
             intent.setClassName(packageInfo.packageName, packageInfo.activityName);
-            if (headers != null && headers.size() > 0) {
+            if (!"content".equalsIgnoreCase(Uri.parse(url).getScheme()) && headers != null && headers.size() > 0) {
                 url = url + "|";
                 int idx = 0;
                 for (String hk : headers.keySet()) {
@@ -94,11 +95,13 @@ public class MXPlayer {
                 }
             }
             intent.setData(Uri.parse(url));
+            MediaFileAccess.grantRead(intent, Uri.parse(url));
             intent.putExtra("title", title);
 
             if (subtitle != null && !subtitle.isEmpty()) {
                 Parcelable[] parcels = new Parcelable[1];
                 parcels[0] = Uri.parse(subtitle);
+                MediaFileAccess.grantRead(intent, Uri.parse(subtitle));
                 intent.putExtra("subs", parcels);
                 intent.putExtra("subs.enable", parcels);
             }

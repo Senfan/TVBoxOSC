@@ -1,4 +1,7 @@
 rootProject.name = "TVBox"
 include ':app'
 include ':quickjs'
-include ':pyramid'
+// Keep the Python sources, but don't configure their plugin for Sony normal builds.
+if (providers.gradleProperty('enablePython').orElse('false').get() == 'true') {
+    include ':pyramid'
+}

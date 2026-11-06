@@ -6,6 +6,8 @@ import android.util.Log;
 
 
 import com.github.tvbox.osc.base.App;
+import com.github.tvbox.osc.api.ApiConfig;
+import com.github.tvbox.osc.util.DynamicCodeFiles;
 import com.github.tvbox.osc.util.FileUtils;
 import com.github.tvbox.osc.util.MD5;
 import com.lzy.okgo.OkGo;
@@ -13,9 +15,7 @@ import com.lzy.okgo.OkGo;
 import org.json.JSONObject;
 
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import dalvik.system.DexClassLoader;
 import okhttp3.Response;
+import okhttp3.ResponseBody;
 
 public class JarLoader {
     private final ConcurrentHashMap<String, DexClassLoader> classLoaders = new ConcurrentHashMap<>();
@@ -38,7 +39,26 @@ public class JarLoader {
      */
     public boolean load(String cache) {
         recentJarKey = "main";
-        return loadClassLoader(cache, recentJarKey);
+        String md5 = "";
+        // ApiConfig owns main-JAR acquisition (including img+); its public load API only passes a path.
+        // Apply the configured checksum here as well, without changing that source protocol.
+        String spider = ApiConfig.get().getSpider();
+        if (spider != null) {
+            String[] urls = spider.split(";md5;");
+            if (urls.length > 1) md5 = urls[1].trim();
+        }
+        // ApiConfig's cache filename is already the source URL key; avoid a shared MD5 digest here.
+        String prefix = "main-" + new File(cache).getName();
+        if (loadClassLoader(cache, "main", prefix, md5)) return true;
+        return loadPrevious("main", prefix, md5);
+    }
+
+    /** Validate a new main candidate without treating an older loaded/snapshotted JAR as success. */
+    public synchronized boolean loadCandidate(String path, String stableCacheName, String expectedMd5) {
+        if (!classLoaders.isEmpty() || stableCacheName == null || stableCacheName.isEmpty()
+                || !new File(stableCacheName).getName().equals(stableCacheName)) return false;
+        recentJarKey = "main";
+        return loadClassLoader(path, "main", "main-" + stableCacheName, expectedMd5);
     }
 
     public void clear() {
@@ -47,17 +67,50 @@ public class JarLoader {
         classLoaders.clear();
     }
 
-    private boolean loadClassLoader(String jar, String key) {
+    private File codeDir() {
+        return new File(App.getInstance().getFilesDir(), "dynamic_code/jar");
+    }
+
+    private boolean loadClassLoader(String jar, String key, String prefix, String md5) {
+        if (classLoaders.containsKey(key)) return true;
+        File prepared = null;
+        try {
+            prepared = DynamicCodeFiles.prepareForLoading(new File(jar), codeDir(), prefix, ".jar", md5);
+            if (loadPrepared(prepared, key)) return true;
+        } catch (Throwable th) {
+            th.printStackTrace();
+        }
+        if (prepared != null) prepared.delete(); // Only this failed attempt's private copy.
+        return false;
+    }
+
+    private boolean loadPrevious(String key, String prefix, String md5) {
+        try {
+            File previous = DynamicCodeFiles.latestReadOnly(codeDir(), prefix, ".jar");
+            if (previous != null) {
+                DynamicCodeFiles.verifyMd5(previous, md5);
+                Log.i("JarLoader", "echo-回退到私有只读jar缓存: " + key);
+                return loadPrepared(previous, key);
+            }
+        } catch (Throwable th) {
+            th.printStackTrace();
+        }
+        return false;
+    }
+
+    private boolean loadPrepared(File jar, String key) {
         if (classLoaders.containsKey(key)){
             Log.i("JarLoader", "echo-loadClassLoader jar缓存: " + key);
             return true;
         }
         boolean success = false;
         try {
+            if (!DynamicCodeFiles.isReadOnlyRegularFile(jar)) throw new IOException("拒绝加载可写jar");
             File cacheDir = new File(App.getInstance().getCacheDir().getAbsolutePath() + "/catvod_csp");
             if (!cacheDir.exists())
                 cacheDir.mkdirs();
-            final DexClassLoader classLoader = new DexClassLoader(jar, cacheDir.getAbsolutePath(), null, App.getInstance().getClassLoader());
+            final DexClassLoader classLoader = new DexClassLoader(jar.getAbsolutePath(), cacheDir.getAbsolutePath(), null, App.getInstance().getClassLoader());
+            Method loadedProxy = null;
             int count = 0;
             do {
                 try {
@@ -81,8 +134,7 @@ public class JarLoader {
                         success = true;
                         try {
                             Class<?> proxy = classLoader.loadClass("com.github.catvod.spider.Proxy");
-                            Method proxyMethod = proxy.getMethod("proxy", Map.class);
-                            proxyMethods.put(key, proxyMethod);
+                            loadedProxy = proxy.getMethod("proxy", Map.class);
                         } catch (Throwable th) {
                             // 可以记录错误日志
                             th.printStackTrace();
@@ -96,8 +148,8 @@ public class JarLoader {
                 count++;
             } while (count < 2);
 
-            if (success) {
-                classLoaders.put(key, classLoader);
+            if (success && classLoaders.putIfAbsent(key, classLoader) == null && loadedProxy != null) {
+                proxyMethods.put(key, loadedProxy);
             }
         } catch (Throwable th) {
             th.printStackTrace();
@@ -110,47 +162,32 @@ public class JarLoader {
             Log.i("JarLoader", "echo-loadJarInternal jar缓存: " + key);
             return classLoaders.get(key);
         }
-        File cache = new File(App.getInstance().getFilesDir().getAbsolutePath() + "/csp/" + key + ".jar");
-        if (!md5.isEmpty()) {
-            if (cache.exists() && MD5.getFileMd5(cache).equalsIgnoreCase(md5)) {
-                if(loadClassLoader(cache.getAbsolutePath(), key)){
-                    return classLoaders.get(key);
-                }else {
-                    return null;
-                }
-            }
-        }else {
-            if (cache.exists() && !FileUtils.isWeekAgo(cache)) {
-                if(loadClassLoader(cache.getAbsolutePath(), key)){
-                    return classLoaders.get(key);
-                }
-            }
+        File cache = new File(App.getInstance().getFilesDir(), "csp/" + key + ".jar");
+        String prefix = "sub-" + key;
+        if (cache.exists() && (!md5.isEmpty() || !FileUtils.isWeekAgo(cache))) {
+            if (loadClassLoader(cache.getAbsolutePath(), key, prefix, md5)) return classLoaders.get(key);
         }
+        File candidate = null;
         try {
             Response response = OkGo.<File>get(jar).execute();
-            assert response.body() != null;
-            InputStream is = response.body().byteStream();
-            OutputStream os = new FileOutputStream(cache);
-            try {
-                byte[] buffer = new byte[2048];
-                int length;
-                while ((length = is.read(buffer)) > 0) {
-                    os.write(buffer, 0, length);
-                }
-            } finally {
-                try {
-                    is.close();
-                    os.close();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
+            try (ResponseBody body = response.body()) {
+                if (!response.isSuccessful() || body == null) throw new IOException("下载jar失败");
+                candidate = DynamicCodeFiles.writeReadOnly(body.byteStream(), body.contentLength(),
+                        cache.getParentFile(), key, ".jar", md5);
             }
-            loadClassLoader(cache.getAbsolutePath(), key);
-            return classLoaders.get(key);
+            if (loadClassLoader(candidate.getAbsolutePath(), key, prefix, md5)) {
+                DynamicCodeFiles.replacePreservingPrevious(candidate, cache);
+                return classLoaders.get(key);
+            }
         } catch (Throwable e) {
             e.printStackTrace();
+        } finally {
+            if (candidate != null && candidate.exists()) candidate.delete();
         }
-        return null;
+        // Failed refreshes never truncate the old cache; declared MD5 still applies to fallback.
+        if (classLoaders.containsKey(key)) return classLoaders.get(key);
+        if (cache.exists() && loadClassLoader(cache.getAbsolutePath(), key, prefix, md5)) return classLoaders.get(key);
+        return loadPrevious(key, prefix, md5) ? classLoaders.get(key) : null;
     }
 
     public Spider getSpider(String key, String cls, String ext, String jar) {

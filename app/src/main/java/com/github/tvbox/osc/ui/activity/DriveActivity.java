@@ -1,6 +1,12 @@
 package com.github.tvbox.osc.ui.activity;
 
-import android.Manifest;
+import android.app.AlertDialog;
+import com.github.tvbox.osc.util.WorkspaceFiles;
+import com.github.tvbox.osc.util.WorkspaceImport;
+import com.github.tvbox.osc.util.DefaultConfig;
+import com.hjq.permissions.XXPermissions;
+import com.hjq.permissions.OnPermissionCallback;
+import java.io.IOException;
 import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.os.Build;
@@ -136,14 +142,7 @@ public class DriveActivity extends BaseActivity {
                     @Override
                     public void click(StorageDriveType.TYPE value, int pos) {
                         if (value == StorageDriveType.TYPE.LOCAL) {
-                            if (Build.VERSION.SDK_INT >= 23) {
-                                if (App.getInstance().checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                                    ActivityCompat.requestPermissions(DriveActivity.this,
-                                            new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1);
-                                    return;
-                                }
-                            }
-                            openFilePicker();
+                            chooseLocalSource();
                             dialog.dismiss();
                         } else if (value == StorageDriveType.TYPE.WEBDAV) {
                             openWebdavDialog(null);
@@ -336,6 +335,41 @@ public class DriveActivity extends BaseActivity {
         }
     };
 
+    private void chooseLocalSource() {
+        new AlertDialog.Builder(this).setTitle("本地文件")
+                .setItems(new String[]{"打开私有工作区（无需权限）", "系统导入文件/目录", "传统目录访问（可选授权）"}, (dialog, which) -> {
+                    if (which == 0) {
+                        try { addLocalDirectory(WorkspaceFiles.root()); }
+                        catch (IOException e) { Toast.makeText(this, "工作区不可用", Toast.LENGTH_LONG).show(); }
+                    } else if (which == 1) {
+                        WorkspaceImport.choose(this, false, this::addLocalDirectory);
+                    } else if (XXPermissions.isGranted(this, DefaultConfig.StoragePermissionGroup())) {
+                        openFilePicker();
+                    } else {
+                        XXPermissions.with(this).permission(DefaultConfig.StoragePermissionGroup()).request(new OnPermissionCallback() {
+                            @Override public void onGranted(List<String> permissions, boolean all) {
+                                if (all) openFilePicker();
+                            }
+                            @Override public void onDenied(List<String> permissions, boolean never) {
+                                Toast.makeText(DriveActivity.this, "未授权，可使用系统导入；原文件未改变", Toast.LENGTH_LONG).show();
+                            }
+                        });
+                    }
+                }).setNegativeButton("取消", null).show();
+    }
+
+    private void addLocalDirectory(File directory) {
+        String path = directory.getAbsolutePath();
+        for (DriveFolderFile drive : drives) {
+            if (drive.getDriveType() == StorageDriveType.TYPE.LOCAL && path.equals(drive.getDriveData().name)) {
+                Toast.makeText(this, "此文件夹已在空间列表中", Toast.LENGTH_SHORT).show();
+                return;
+            }
+        }
+        RoomDataManger.insertDriveRecord(path, StorageDriveType.TYPE.LOCAL, null);
+        EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_DRIVE_REFRESH));
+    }
+
     private void openFilePicker() {
         if (delMode)
             toggleDelMode();
@@ -349,15 +383,7 @@ public class DriveActivity extends BaseActivity {
                 .withChosenListener(new ChooserDialog.Result() {
                     @Override
                     public void onChoosePath(String dir, File dirFile) {
-                        String absPath = dirFile.getAbsolutePath();
-                        for (DriveFolderFile drive : drives) {
-                            if (drive.getDriveType() == StorageDriveType.TYPE.LOCAL && absPath.equals(drive.getDriveData().name)) {
-                                Toast.makeText(mContext, "此文件夹之前已被添加到空间列表！", Toast.LENGTH_SHORT).show();
-                                return;
-                            }
-                        }
-                        RoomDataManger.insertDriveRecord(absPath, StorageDriveType.TYPE.LOCAL, null);
-                        EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_DRIVE_REFRESH));
+                        addLocalDirectory(dirFile);
                     }
                 }).show();
     }

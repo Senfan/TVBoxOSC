@@ -10,6 +10,7 @@ import android.os.Parcelable;
 import android.util.Log;
 
 import com.github.tvbox.osc.base.App;
+import com.github.tvbox.osc.util.MediaFileAccess;
 
 import java.net.URLEncoder;
 import java.util.HashMap;
@@ -83,7 +84,7 @@ public class Kodi {
             return false;
 
         try {
-            if (headers != null && headers.size() > 0) {
+            if (!"content".equalsIgnoreCase(Uri.parse(url).getScheme()) && headers != null && headers.size() > 0) {
                 url = url + "|";
                 int idx = 0;
                 for (String hk : headers.keySet()) {
@@ -106,11 +107,13 @@ public class Kodi {
                 intent.setPackage(PACKAGE_NAME);
                 intent.setClassName(PACKAGE_NAME, activityName); // 设置要尝试的 Activity
                 intent.setData(Uri.parse(url));
+                MediaFileAccess.grantRead(intent, Uri.parse(url));
                 intent.putExtra("title", title);
                 intent.putExtra("name", title);
 
                 if (subtitle != null && !subtitle.isEmpty()) {
                     intent.putExtra("subs", subtitle);
+                    MediaFileAccess.grantRead(intent, Uri.parse(subtitle));
                 }
                 activity.startActivity(intent);
                 return true;

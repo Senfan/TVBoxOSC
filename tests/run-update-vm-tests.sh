@@ -21,6 +21,11 @@ find_jar() {
     printf '%s' "$jar"
 }
 
+if [[ -n "${TVBOX_UPDATE_TEST_CLASSPATH:-}" ]]; then
+    classpath="$TVBOX_UPDATE_TEST_CLASSPATH"
+    printf 'Explicit update regression classpath: %s\n' "$classpath"
+else
+# Legacy baseline is retained for comparisons; upgraded runs pass an explicit classpath.
 gson="$(find_jar 'gson-2.10.1.jar')"
 okhttp="$(find_jar 'okhttp-3.12.11.jar')"
 okio="$(find_jar 'okio-jvm-3.3.0.jar')"
@@ -34,6 +39,7 @@ if [[ -z "$kotlin" ]]; then
     exit 1
 fi
 classpath="$gson:$okhttp:$okio:$kotlin"
+fi
 classes="$temporary/classes"
 mkdir -p "$classes" "$temporary/vm"
 stubs=()

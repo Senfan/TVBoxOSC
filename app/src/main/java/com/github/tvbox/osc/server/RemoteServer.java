@@ -4,7 +4,8 @@ import static com.github.tvbox.osc.util.RegexUtils.getPattern;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.net.wifi.WifiManager;
-import android.os.Environment;
+import com.github.tvbox.osc.util.WorkspaceFiles;
+import com.github.tvbox.osc.util.WorkspaceIO;
 import android.util.Base64;
 
 import com.github.tvbox.osc.R;
@@ -130,10 +131,7 @@ public class RemoteServer extends NanoHTTPD {
     public Response serve(IHTTPSession session) {
         EventBus.getDefault().post(new ServerEvent(ServerEvent.SERVER_CONNECTION));
         if (!session.getUri().isEmpty()) {
-            String fileName = session.getUri().trim();
-            if (fileName.indexOf('?') >= 0) {
-                fileName = fileName.substring(0, fileName.indexOf('?'));
-            }
+            String fileName = session.getUri();
             if (session.getMethod() == Method.GET) {
                 for (RequestProcess process: getRequestList) {
                     if (process.isRequest(session, fileName)) {
@@ -164,21 +162,18 @@ public class RemoteServer extends NanoHTTPD {
                     }
                 } else if (fileName.startsWith("/file/")) {
                     try {
-                        String f = fileName.substring(6);
-                        String root = Environment.getExternalStorageDirectory().getAbsolutePath();
-                        String file = root + "/" + f;
-                        File localFile = new File(file);
-                        if (localFile.exists()) {
-                            if (localFile.isFile()) {
-                                return NanoHTTPD.newChunkedResponse(NanoHTTPD.Response.Status.OK, "application/octet-stream", new FileInputStream(localFile));
-                            } else {
-                                return NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.OK, NanoHTTPD.MIME_PLAINTEXT, fileList(root, f));
-                            }
-                        } else {
-                            return NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.INTERNAL_ERROR, NanoHTTPD.MIME_PLAINTEXT, "File " + file + " not found!");
+                        String path = fileName.substring(6);
+                        File localFile = WorkspaceFiles.resolve(path);
+                        if (localFile.isFile()) {
+                            long length = localFile.length();
+                            if (length > WorkspaceIO.MAX_FILE_BYTES) return createPlainTextResponse(Response.Status.BAD_REQUEST, "文件超过下载上限");
+                            return NanoHTTPD.newFixedLengthResponse(Response.Status.OK, "application/octet-stream", new FileInputStream(localFile), length);
                         }
-                    } catch (Throwable th) {
-                        return NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.INTERNAL_ERROR, NanoHTTPD.MIME_PLAINTEXT, th.getMessage());
+                        if (localFile.isDirectory()) return createPlainTextResponse(Response.Status.OK,
+                                fileList(WorkspaceFiles.root().getPath(), path));
+                        return createPlainTextResponse(Response.Status.NOT_FOUND, "工作区文件不存在，请导入配置目录或ZIP");
+                    } catch (IOException | IllegalArgumentException e) {
+                        return createPlainTextResponse(Response.Status.BAD_REQUEST, "非法或不可读的工作区路径");
                     }
                 } else if (fileName.equals("/dns-query")) {
                     String name = session.getParms().get("name");
@@ -201,6 +196,20 @@ public class RemoteServer extends NanoHTTPD {
                     }
                 }
             } else if (session.getMethod() == Method.POST) {
+                // NanoHTTPD parses/spools the body before dispatch. Bound it BEFORE parseBody.
+                // Its parser is Content-Length based; ambiguous/chunked requests are refused.
+                try {
+                    String lengthHeader = session.getHeaders().get("content-length");
+                    if (lengthHeader == null || !lengthHeader.matches("[0-9]+")
+                            || session.getHeaders().containsKey("transfer-encoding")) {
+                        return createPlainTextResponse(Response.Status.BAD_REQUEST, "需要明确Content-Length");
+                    }
+                    long length = Long.parseLong(lengthHeader);
+                    long limit = fileName.equals("/upload") ? WorkspaceIO.MAX_TOTAL_BYTES + 2 * 1024 * 1024 : 64 * 1024;
+                    if (length > limit) return createPlainTextResponse(Response.Status.BAD_REQUEST, "请求超过大小上限");
+                } catch (NumberFormatException e) {
+                    return createPlainTextResponse(Response.Status.BAD_REQUEST, "非法Content-Length");
+                }
                 Map < String, String > files = new HashMap < String, String > ();
                 try {
                     if (session.getHeaders().containsKey("content-type")) {
@@ -230,57 +239,26 @@ public class RemoteServer extends NanoHTTPD {
                 try {
                     Map < String, String > params = session.getParms();
                     if (fileName.equals("/upload")) {
-                        String path = params.get("path");
-                        for (String k: files.keySet()) {
-                            if (k.startsWith("files-")) {
-                                String fn = params.get(k);
-                                String tmpFile = files.get(k);
-                                File tmp = new File(tmpFile);
-                                String root = Environment.getExternalStorageDirectory().getAbsolutePath();
-                                File file = new File(root + "/" + path + "/" + fn);
-                                if (file.exists()) file.delete();
-                                if (tmp.exists()) {
-                                    if (fn.toLowerCase().endsWith(".zip")) {
-                                        unzip(tmp, root + "/" + path);
-                                    } else {
-                                        FileUtils.copyFile(tmp, file);
-                                    }
-                                }
-                                if (tmp.exists()) tmp.delete();
-                            }
-                        }
-                        return NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.OK, NanoHTTPD.MIME_PLAINTEXT, "OK");
+                        importUpload(params, files);
+                        return createPlainTextResponse(Response.Status.OK, "OK");
                     } else if (fileName.equals("/newFolder")) {
-                        String path = params.get("path");
-                        String name = params.get("name");
-                        String root = Environment.getExternalStorageDirectory().getAbsolutePath();
-                        File file = new File(root + "/" + path + "/" + name);
-                        if (!file.exists()) {
-                            file.mkdirs();
-                            File flag = new File(root + "/" + path + "/" + name + "/.tvbox_folder");
-                            if (!flag.exists()) flag.createNewFile();
-                        }
-                        return NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.OK, NanoHTTPD.MIME_PLAINTEXT, "OK");
-                    } else if (fileName.equals("/delFolder")) {
-                        String path = params.get("path");
-                        String root = Environment.getExternalStorageDirectory().getAbsolutePath();
-                        File file = new File(root + "/" + path);
-                        if (file.exists()) {
-                            FileUtils.recursiveDelete(file);
-                        }
-                        return NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.OK, NanoHTTPD.MIME_PLAINTEXT, "OK");
-                    } else if (fileName.equals("/delFile")) {
-                        String path = params.get("path");
-                        String root = Environment.getExternalStorageDirectory().getAbsolutePath();
-                        File file = new File(root + "/" + path);
-                        if (file.exists()) {
-                            file.delete();
-                        }
-                        return NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.OK, NanoHTTPD.MIME_PLAINTEXT, "OK");
+                        File parent = WorkspaceFiles.resolve(params.get("path"));
+                        if (!parent.isDirectory()) throw new IOException("父目录不存在");
+                        File folder = WorkspaceIO.resolve(parent, WorkspaceIO.name(params.get("name")));
+                        if (folder.exists() || !folder.mkdir()) throw new IOException("目录已存在或创建失败");
+                        return createPlainTextResponse(Response.Status.OK, "OK");
+                    } else if (fileName.equals("/delFolder") || fileName.equals("/delFile")) {
+                        File selected = WorkspaceFiles.resolve(params.get("path"));
+                        if (selected.equals(WorkspaceFiles.root())) throw new IOException("不能删除工作区根");
+                        if (fileName.equals("/delFile") && !selected.isFile()) throw new IOException("不是文件");
+                        if (fileName.equals("/delFolder") && !selected.isDirectory()) throw new IOException("不是目录");
+                        WorkspaceIO.deleteTree(selected);
+                        return createPlainTextResponse(Response.Status.OK, "OK");
                     }
-                } catch (Throwable th) {
-                    return NanoHTTPD.newFixedLengthResponse(NanoHTTPD.Response.Status.OK, NanoHTTPD.MIME_PLAINTEXT, "OK");
+                } catch (IOException | IllegalArgumentException e) {
+                    return createPlainTextResponse(Response.Status.BAD_REQUEST, "操作失败：路径、大小或文件内容不符合要求；原配置未替换");
                 }
+
             }
         }
         //default page: index.html
@@ -353,80 +331,72 @@ public class RemoteServer extends NanoHTTPD {
         return sdf.format(date);
     }
 
-    String fileList(String root, String path) {
-        File file = new File(root + "/" + path);
-        File[] list = file.listFiles();
+    private void importUpload(Map<String, String> params, Map<String, String> files) throws IOException {
+        File destination = WorkspaceFiles.resolve(params.get("path"));
+        if (!destination.isDirectory()) throw new IOException("目标目录不存在");
+        File stage = WorkspaceFiles.newStage();
+        try {
+            WorkspaceIO.Budget budget = new WorkspaceIO.Budget();
+            int count = 0;
+            for (String key : files.keySet()) {
+                if (!key.startsWith("files-")) continue;
+                String name = WorkspaceIO.name(params.get(key));
+                File temporary = new File(files.get(key));
+                if (!temporary.isFile() || temporary.length() > WorkspaceIO.MAX_FILE_BYTES) throw new IOException("上传文件无效或过大");
+                budget.entry();
+                count++;
+                try (InputStream input = new FileInputStream(temporary)) {
+                    if (name.toLowerCase(java.util.Locale.ROOT).endsWith(".zip")) {
+                        File unzipRoot = files.size() == 1 ? stage : WorkspaceIO.resolve(stage, name + "-contents");
+                        WorkspaceIO.directory(unzipRoot);
+                        WorkspaceIO.unzip(input, unzipRoot, budget);
+                    } else {
+                        File target = WorkspaceIO.resolve(stage, name);
+                        if (target.exists()) throw new IOException("重复上传文件名");
+                        try (FileOutputStream output = new FileOutputStream(target)) {
+                            budget.add(WorkspaceIO.copy(input, output, budget.remaining()));
+                            output.getFD().sync();
+                        }
+                    }
+                }
+            }
+            if (count == 0) throw new IOException("没有上传文件");
+            WorkspaceIO.publish(stage, destination, WorkspaceFiles.root());
+        } finally {
+            // This transaction's staging only; never a source upload/configuration/backup.
+            if (stage.exists()) WorkspaceIO.deleteTree(stage);
+        }
+    }
+
+    String fileList(String root, String path) throws IOException {
+        File base = WorkspaceFiles.root();
+        File directory = WorkspaceIO.resolve(base, path);
+        File[] list = directory.listFiles();
+        if (list == null) throw new IOException("目录不可读");
         JsonObject info = new JsonObject();
         info.addProperty("remote", getServerAddress().replace("http://", "clan://"));
-        info.addProperty("del", 0);
-        if (path.isEmpty()) {
-            info.addProperty("parent", ".");
-        } else {
-            info.addProperty("parent", file.getParentFile().getAbsolutePath().replace(root + "/", "").replace(root, ""));
-        }
-        if (list == null || list.length == 0) {
-            info.add("files", new JsonArray());
-            return info.toString();
-        }
-        Arrays.sort(list, new Comparator<File>() {
-            @Override
-            public int compare(File o1, File o2) {
-                if (o1.isDirectory() && o2.isFile()) return -1;
-                return o1.isFile() && o2.isDirectory() ? 1 : o1.getName().compareTo(o2.getName());
-            }
+        info.addProperty("del", directory.equals(base) ? 0 : 1);
+        info.addProperty("parent", directory.equals(base) ? "." : WorkspaceIO.relative(base, directory.getParentFile()));
+        Arrays.sort(list, (left, right) -> {
+            if (left.isDirectory() != right.isDirectory()) return left.isDirectory() ? -1 : 1;
+            return left.getName().compareTo(right.getName());
         });
         JsonArray result = new JsonArray();
-        for (File f: list) {
-            if (f.getName().startsWith(".")) {
-                if (f.getName().equals(".tvbox_folder")) {
-                    info.addProperty("del", 1);
-                }
-                continue;
-            }
-            JsonObject fileObj = new JsonObject();
-            fileObj.addProperty("name", f.getName());
-            fileObj.addProperty("path", f.getAbsolutePath().replace(root + "/", ""));
-            fileObj.addProperty("time", fileTime(f.lastModified(), "yyyy/MM/dd aHH:mm:ss"));
-            fileObj.addProperty("dir", f.isDirectory() ? 1 : 0);
-            result.add(fileObj);
+        for (File file : list) {
+            if (file.getName().startsWith(".")) continue;
+            String relative;
+            try {
+                relative = WorkspaceIO.relative(base, file);
+                if (!file.getAbsoluteFile().equals(WorkspaceIO.resolve(base, relative))) continue;
+            } catch (IOException e) { continue; }
+            JsonObject item = new JsonObject();
+            item.addProperty("name", file.getName());
+            item.addProperty("path", relative);
+            item.addProperty("time", fileTime(file.lastModified(), "yyyy/MM/dd aHH:mm:ss"));
+            item.addProperty("dir", file.isDirectory() ? 1 : 0);
+            result.add(item);
         }
         info.add("files", result);
         return info.toString();
     }
-
-    void unzip(File zipFilePath, String destDirectory) throws Throwable {
-        File destDir = new File(destDirectory);
-        if (!destDir.exists()) {
-            destDir.mkdirs();
-        }
-        ZipFile zip = new ZipFile(zipFilePath);
-        Enumeration < ZipEntry > iter = (Enumeration < ZipEntry > ) zip.entries();
-        while (iter.hasMoreElements()) {
-            ZipEntry entry = iter.nextElement();
-            InputStream is = zip.getInputStream(entry);
-            String filePath = destDirectory + File.separator + entry.getName();
-            if (!entry.isDirectory()) {
-                extractFile(is, filePath);
-            } else {
-                File dir = new File(filePath);
-                if (!dir.exists()) dir.mkdirs();
-                File flag = new File(dir + "/.tvbox_folder");
-                if (!flag.exists()) flag.createNewFile();
-            }
-        }
-    }
-
-    void extractFile(InputStream inputStream, String destFilePath) throws Throwable {
-        File dst = new File(destFilePath);
-        if (dst.exists()) dst.delete();
-        BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(destFilePath));
-        byte[] bytesIn = new byte[2048];
-        int len = inputStream.read(bytesIn);
-        while (len > 0) {
-            bos.write(bytesIn, 0, len);
-            len = inputStream.read(bytesIn);
-        }
-        bos.close();
-    }
-
 }
